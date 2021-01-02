@@ -33,6 +33,8 @@ use crate::coord::{
 };
 use crate::coord;
 
+const PRINT_STATE: bool = true;
+
 const BEAT_OFFSETS: [Coord; 8] = [
     coord!(-2, 0),
     coord!(-2, -2),
@@ -70,6 +72,12 @@ const INITIAL_STATE: [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize]
 pub fn is_opposite_token(a: FieldState, b: FieldState) -> bool {
     (a == FieldState::Sheep && b == FieldState::Wolf) ||
     (a == FieldState::Wolf  && b == FieldState::Sheep)
+}
+
+fn print_state(msg: &str) {
+    if PRINT_STATE {
+        println!("{}", msg);
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -205,7 +213,7 @@ impl GameState {
                 self.stats.sheep_beaten += 1;
                 self.just_beaten = Some(to_pos);
                 self.set_field_state(beat_pos, FieldState::Empty);
-                println!("Beaten sheep at {}", beat_pos);
+                print_state(&format!("Beaten sheep at {}", beat_pos));
             },
         }
     }
@@ -337,7 +345,7 @@ impl GameState {
     }
 
     fn print_turn(&self) {
-        println!("Next turn is: {:?}", self.turn);
+        print_state(&format!("Next turn is: {:?}", self.turn));
     }
 
     fn next_turn(&mut self) {
@@ -349,7 +357,7 @@ impl GameState {
                     let to_pos = wolf_pos + *offset;
                     match self.validate_move(wolf_pos, to_pos) {
                         ValidationResult::ValidBeat(_) => {
-                            println!("Wolf can beat more sheep.");
+                            print_state("Wolf can beat more sheep.");
                             return Turn::WolfchainOrSheep;
                         },
                         ValidationResult::Invalid | ValidationResult::Valid =>
@@ -366,7 +374,7 @@ impl GameState {
             Turn::WolfchainOrSheep => {
                 match self.mov {
                     MoveState::NoMove =>
-                        println!("Internal error: next_turn() no move."),
+                        eprintln!("Internal error: next_turn() no move."),
                     MoveState::Wolf =>
                         self.turn = calc_wolf_turn(),
                     MoveState::Sheep =>
