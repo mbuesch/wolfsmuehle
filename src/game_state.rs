@@ -83,8 +83,8 @@ fn print_state(msg: &str) {
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MoveState {
     NoMove,
-    Wolf,
-    Sheep,
+    Wolf(Coord),
+    Sheep(Coord),
 }
 
 #[derive(PartialEq, Debug)]
@@ -110,9 +110,7 @@ pub struct Stats {
 
 pub struct GameState {
     fields:         [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
-    field_moving:   Option<Coord>,
-    mov:            MoveState,
-    mov_pos:        Option<Coord>,
+    moving:         MoveState,
     stats:          Stats,
     turn:           Turn,
     just_beaten:    Option<Coord>,
@@ -150,9 +148,7 @@ impl GameState {
 
         let game = GameState {
             fields,
-            field_moving:   None,
-            mov:            MoveState::NoMove,
-            mov_pos:        None,
+            moving:         MoveState::NoMove,
             stats,
             turn:           Turn::Sheep,
             just_beaten:    None,
@@ -182,23 +178,18 @@ impl GameState {
         }
     }
 
-    /// Set/reset a moving state of a position.
-    fn set_field_moving(&mut self, pos: Option<Coord>) {
-        self.field_moving = pos;
-    }
-
     /// Get the moving state of a position.
     pub fn get_field_moving(&self, pos: Coord) -> bool {
-        if let Some(field_moving) = self.field_moving {
-            field_moving == pos
-        } else {
-            false
+        match self.get_move_state() {
+            MoveState::NoMove => false,
+            MoveState::Wolf(p) => p == pos,
+            MoveState::Sheep(p) => p == pos,
         }
     }
 
     /// Get the global move status.
     pub fn get_move_state(&self) -> MoveState {
-        self.mov
+        self.moving
     }
 
     /// Beat one token at pos.
@@ -372,12 +363,12 @@ impl GameState {
             Turn::Sheep =>
                 self.turn = Turn::Wolf,
             Turn::WolfchainOrSheep => {
-                match self.mov {
+                match self.moving {
                     MoveState::NoMove =>
                         eprintln!("Internal error: next_turn() no move."),
-                    MoveState::Wolf =>
+                    MoveState::Wolf(_) =>
                         self.turn = calc_wolf_turn(),
-                    MoveState::Sheep =>
+                    MoveState::Sheep(_) =>
                         self.turn = Turn::Wolf,
                 }
             },
@@ -393,7 +384,7 @@ impl GameState {
         if pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT {
             return Err(ah::format_err!("move_pick: Coordinates out of bounds."));
         }
-        if self.mov != MoveState::NoMove {
+        if self.moving != MoveState::NoMove {
             return Err(ah::format_err!("move_pick: Already moving."))
         }
 
@@ -402,36 +393,33 @@ impl GameState {
                 Err(ah::format_err!("move_pick: Move from empty field."))
             },
             FieldState::Wolf => {
-                self.mov_pos = Some(pos);
-                self.mov = MoveState::Wolf;
+                self.moving = MoveState::Wolf(pos);
                 self.set_field_state(pos, FieldState::Wolf);
-                self.set_field_moving(Some(pos));
                 Ok(())
             },
             FieldState::Sheep => {
-                self.mov_pos = Some(pos);
-                self.mov = MoveState::Sheep;
+                self.moving = MoveState::Sheep(pos);
                 self.set_field_state(pos, FieldState::Sheep);
-                self.set_field_moving(Some(pos));
                 Ok(())
             },
         }
     }
 
     fn do_move_place(&mut self, pos: Coord) {
-        match self.get_field_state(self.mov_pos.unwrap()) {
-            FieldState::Unused | FieldState::Empty =>
+        match self.moving {
+            MoveState::NoMove =>
                 eprintln!("Internal error: Invalid move source."),
-            FieldState::Wolf =>
-                self.set_field_state(pos, FieldState::Wolf),
-            FieldState::Sheep =>
-                self.set_field_state(pos, FieldState::Sheep),
+            MoveState::Wolf(from_pos) => {
+                self.set_field_state(pos, FieldState::Wolf);
+                self.set_field_state(from_pos, FieldState::Empty);
+            },
+            MoveState::Sheep(from_pos) => {
+                self.set_field_state(pos, FieldState::Sheep);
+                self.set_field_state(from_pos, FieldState::Empty);
+            },
         }
-        self.set_field_state(self.mov_pos.unwrap(),
-                             FieldState::Empty);
         self.next_turn();
-        self.mov_pos = None;
-        self.mov = MoveState::NoMove;
+        self.moving = MoveState::NoMove;
     }
 
     /// End a move operation.
@@ -439,9 +427,12 @@ impl GameState {
         if pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT {
             return Err(ah::format_err!("move_pick: Coordinates out of bounds."));
         }
-        if self.mov == MoveState::NoMove {
-            return Err(ah::format_err!("move_place: Not moving."))
-        }
+        let from_pos = match self.moving {
+            MoveState::NoMove =>
+                return Err(ah::format_err!("move_place: Not moving.")),
+            MoveState::Wolf(p) => p,
+            MoveState::Sheep(p) => p,
+        };
 
         match self.get_field_state(pos) {
             FieldState::Unused |
@@ -450,7 +441,7 @@ impl GameState {
                 Err(ah::format_err!("move_place: Field occupied."))
             },
             FieldState::Empty => {
-                match self.validate_move(self.mov_pos.unwrap(), pos) {
+                match self.validate_move(from_pos, pos) {
                     ValidationResult::Invalid =>
                         Err(ah::format_err!("move_place: Invalid move.")),
                     ValidationResult::Valid => {
@@ -458,7 +449,7 @@ impl GameState {
                         Ok(())
                     },
                     ValidationResult::ValidBeat(beat_pos) => {
-                        self.beat(self.mov_pos.unwrap(), pos, beat_pos);
+                        self.beat(from_pos, pos, beat_pos);
                         self.do_move_place(pos);
                         Ok(())
                     },
@@ -469,9 +460,8 @@ impl GameState {
 
     /// Abort a move operation.
     pub fn move_abort(&mut self) {
-        if self.mov != MoveState::NoMove {
-            self.set_field_moving(None);
-            self.mov = MoveState::NoMove;
+        if self.moving != MoveState::NoMove {
+            self.moving = MoveState::NoMove;
         }
     }
 }

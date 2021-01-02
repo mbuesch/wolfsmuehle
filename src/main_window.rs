@@ -257,8 +257,8 @@ impl DrawingArea {
     fn update_moving_token(&mut self, move_state: MoveState, x: f64, y: f64) {
         self.moving_token = match move_state {
             MoveState::NoMove => MovingToken::NoToken,
-            MoveState::Wolf => MovingToken::Wolf(x, y),
-            MoveState::Sheep => MovingToken::Sheep(x, y),
+            MoveState::Wolf(_pos) => MovingToken::Wolf(x, y),
+            MoveState::Sheep(_pos) => MovingToken::Sheep(x, y),
         };
     }
 
