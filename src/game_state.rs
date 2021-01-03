@@ -27,11 +27,25 @@ use crate::board::{
     coord_is_on_board,
     is_on_main_diag,
 };
+use crate::client::Client;
 use crate::coord::{
     Coord,
     CoordAxis,
 };
 use crate::coord;
+use crate::protocol::{
+    MSG_MOVE_ACTION_ABORT,
+    MSG_MOVE_ACTION_MOVE,
+    MSG_MOVE_ACTION_PICK,
+    MSG_MOVE_ACTION_PUT,
+    MSG_MOVE_TOKEN_CURRENT,
+    MSG_MOVE_TOKEN_SHEEP,
+    MSG_MOVE_TOKEN_WOLF,
+    Message,
+    MsgGameState,
+    MsgMove,
+    MsgType,
+};
 
 const PRINT_STATE: bool = true;
 
@@ -52,6 +66,25 @@ pub enum FieldState {
     Empty,
     Wolf,
     Sheep,
+}
+
+const fn field_state_to_num(field_state: FieldState) -> u32 {
+    match field_state {
+        FieldState::Unused => 0,
+        FieldState::Empty =>  1,
+        FieldState::Wolf =>   2,
+        FieldState::Sheep =>  3,
+    }
+}
+
+fn num_to_field_state(field_state: u32) -> ah::Result<FieldState> {
+    match field_state {
+        0 => Ok(FieldState::Unused),
+        1 => Ok(FieldState::Empty),
+        2 => Ok(FieldState::Wolf),
+        3 => Ok(FieldState::Sheep),
+        s => Err(ah::format_err!("Unknown field state value: {}", s)),
+    }
 }
 
 macro_rules! unused { () => { FieldState::Unused } }
@@ -87,18 +120,53 @@ pub enum MoveState {
     Sheep(Coord),
 }
 
-#[derive(PartialEq, Debug)]
-enum ValidationResult {
-    Invalid,
-    Valid,
-    ValidBeat(Coord),
+const fn move_state_to_num(move_state: &MoveState) -> (u32, u32, u32) {
+    match move_state {
+        MoveState::NoMove =>        (0, 0, 0),
+        MoveState::Wolf(coord) =>   (1, coord.x as u32, coord.y as u32),
+        MoveState::Sheep(coord) =>  (2, coord.x as u32, coord.y as u32),
+    }
+}
+
+fn num_to_move_state(move_state: (u32, u32, u32)) -> ah::Result<MoveState> {
+    match move_state {
+        (0, _, _) => Ok(MoveState::NoMove),
+        (1, x, y) => Ok(MoveState::Wolf(coord!(x as i16, y as i16))),
+        (2, x, y) => Ok(MoveState::Sheep(coord!(x as i16, y as i16))),
+        (a, b, c) => Err(ah::format_err!("Unknown move state values: {} {} {}",
+                                         a, b, c)),
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum Turn {
     Sheep,
-    WolfchainOrSheep,
     Wolf,
+    WolfchainOrSheep,
+}
+
+const fn turn_to_num(turn: &Turn) -> u32 {
+    match turn {
+        Turn::Sheep =>              0,
+        Turn::Wolf =>               1,
+        Turn::WolfchainOrSheep =>   2,
+    }
+}
+
+fn num_to_turn(turn: u32) -> ah::Result<Turn> {
+    match turn {
+        0 => Ok(Turn::Sheep),
+        1 => Ok(Turn::Wolf),
+        2 => Ok(Turn::WolfchainOrSheep),
+        turn => Err(ah::format_err!("Unknown turn value: {}", turn)),
+    }
+}
+
+#[derive(PartialEq, Debug)]
+enum ValidationResult {
+    Invalid,
+    Valid,
+    ValidBeat(Coord),
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -111,20 +179,44 @@ pub struct Stats {
 pub struct GameState {
     fields:         [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
     moving:         MoveState,
+    i_am_moving:    bool,
     stats:          Stats,
     turn:           Turn,
     just_beaten:    Option<Coord>,
+    client:         Option<Client>,
 }
 
 impl GameState {
     /// Construct a new game state.
-    pub fn new() -> GameState {
-        let mut fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
-        let mut stats = Stats {
-            wolves: 0,
-            sheep: 0,
-            sheep_beaten: 0,
+    pub fn new(connect_to_server: Option<String>,
+               room_name: String) -> ah::Result<GameState> {
+        let fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
+        let stats = Stats {
+            wolves:         0,
+            sheep:          0,
+            sheep_beaten:   0,
         };
+        let mut game = GameState {
+            fields,
+            moving:         MoveState::NoMove,
+            i_am_moving:    false,
+            stats,
+            turn:           Turn::Sheep,
+            just_beaten:    None,
+            client:         None,
+        };
+        game.reset_game();
+        if let Some(connect_to_server) = connect_to_server {
+            game.connect(connect_to_server, room_name)?;
+        }
+        game.print_turn();
+        Ok(game)
+    }
+
+    pub fn reset_game(&mut self) {
+        self.stats.wolves = 0;
+        self.stats.sheep = 0;
+        self.stats.sheep_beaten = 0;
 
         for coord in BoardIterator::new() {
             let x = coord.x as usize;
@@ -133,12 +225,12 @@ impl GameState {
                 PosType::Invalid =>
                     (),
                 PosType::Barn | PosType::Field => {
-                    fields[y][x] = INITIAL_STATE[y][x];
-                    match fields[y][x] {
+                    self.fields[y][x] = INITIAL_STATE[y][x];
+                    match self.fields[y][x] {
                         FieldState::Wolf =>
-                            stats.wolves += 1,
+                            self.stats.wolves += 1,
                         FieldState::Sheep =>
-                            stats.sheep += 1,
+                            self.stats.sheep += 1,
                         FieldState::Unused | FieldState::Empty =>
                             (),
                     }
@@ -146,15 +238,160 @@ impl GameState {
             }
         }
 
-        let game = GameState {
-            fields,
-            moving:         MoveState::NoMove,
-            stats,
-            turn:           Turn::Sheep,
-            just_beaten:    None,
-        };
-        game.print_turn();
-        game
+        self.moving = MoveState::NoMove;
+        self.i_am_moving = false;
+        self.turn = Turn::Sheep;
+        self.just_beaten = None;
+    }
+
+    pub fn make_state_message(&self) -> MsgGameState {
+        let mut fields = [[field_state_to_num(FieldState::Unused);
+                           BOARD_WIDTH as usize];
+                          BOARD_HEIGHT as usize];
+        for coord in BoardIterator::new() {
+            let x = coord.x as usize;
+            let y = coord.y as usize;
+            fields[y][x] = field_state_to_num(self.fields[y][x]);
+        }
+        let (moving_state, moving_x, moving_y) = move_state_to_num(&self.moving);
+        let turn = turn_to_num(&self.turn);
+        MsgGameState::new(fields, moving_state, moving_x, moving_y, turn)
+    }
+
+    pub fn server_handle_rx_msg_move(&mut self, msg: &MsgMove) -> ah::Result<()> {
+        match msg.get_action() {
+            (MSG_MOVE_ACTION_PICK, x, y) => {
+                self.move_pick(coord!(x as i16, y as i16))?;
+            },
+            (MSG_MOVE_ACTION_MOVE, _x, _y) => {
+                //TODO
+            },
+            (MSG_MOVE_ACTION_PUT, x, y) => {
+                self.move_put(coord!(x as i16, y as i16))?;
+            },
+            (MSG_MOVE_ACTION_ABORT, _x, _y) => {
+                self.move_abort();
+            },
+            (action, _, _) => {
+                eprintln!("Received invalid move action: {}", action);
+            },
+        }
+        Ok(())
+    }
+
+    fn client_handle_rx_msg_gamestate(&mut self, msg: &MsgGameState) -> bool {
+//        println!("Gamestate RX {:?}", msg);
+        let mut redraw = false;
+
+        if !self.i_am_moving {
+            for coord in BoardIterator::new() {
+                let x = coord.x as usize;
+                let y = coord.y as usize;
+                let field = match num_to_field_state(msg.get_fields()[y][x]) {
+                    Ok(field) => field,
+                    Err(e) => {
+                        eprintln!("Received invalid field state: {}", e);
+                        self.fields[y][x]
+                    },
+                };
+                if field != self.fields[y][x] {
+                    self.fields[y][x] = field;
+                    redraw = true;
+                }
+            }
+
+            let moving = match num_to_move_state(msg.get_moving()) {
+                Ok(moving) => moving,
+                Err(e) => {
+                    eprintln!("Received invalid moving state: {}", e);
+                    self.moving
+                },
+            };
+            if moving != self.moving {
+                self.moving = moving;
+                redraw = true;
+            }
+
+            let turn = match num_to_turn(msg.get_turn()) {
+                Ok(turn) => turn,
+                Err(e) => {
+                    eprintln!("Received invalid turn state: {}", e);
+                    self.turn
+                },
+            };
+            if turn != self.turn {
+                self.turn = turn;
+                redraw = true;
+            }
+        }
+        redraw
+    }
+
+    fn client_handle_rx_messages(&mut self, messages: Vec<Box<dyn Message>>) -> bool {
+        let mut redraw = false;
+        for message in &messages {
+            let message = message.get_message();
+
+            match message {
+                MsgType::MsgTypeNop(_) |
+                MsgType::MsgTypeResult(_) |
+                MsgType::MsgTypePing(_) |
+                MsgType::MsgTypePong(_) |
+                MsgType::MsgTypeJoin(_) |
+                MsgType::MsgTypeLeave(_) |
+                MsgType::MsgTypeReset(_) |
+                MsgType::MsgTypeReqGameState(_) |
+                MsgType::MsgTypeMove(_) => {
+                    // Ignore.
+                },
+                MsgType::MsgTypeGameState(msg) => {
+                    if self.client_handle_rx_msg_gamestate(msg) {
+                        redraw = true;
+                    }
+                },
+            }
+        }
+
+        if let Some(client) = self.client.as_mut() {
+            client.send_request_gamestate().ok();
+        }
+        redraw
+    }
+
+    /// Poll the game server state.
+    pub fn poll_server(&mut self) -> bool {
+        if let Some(client) = self.client.as_mut() {
+            if let Some(messages) = client.poll() {
+                self.client_handle_rx_messages(messages);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Connect to a game server.
+    fn connect(&mut self,
+               addr: String,
+               room_name: String) -> ah::Result<()> {
+        println!("Connecting to server {} ...", addr);
+        let mut client = Client::new(addr)?;
+        client.send_ping()?;
+        client.send_nop()?;
+        println!("Joining room '{}' ...", &room_name);
+        client.send_join(&room_name)?;
+        client.send_request_gamestate()?;
+        self.fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
+        self.client = Some(client);
+        Ok(())
+    }
+
+    fn disconnect(&mut self) {
+        if let Some(mut client) = self.client.take() {
+            client.disconnect();
+        }
     }
 
     /// Get statistics.
@@ -382,30 +619,45 @@ impl GameState {
     /// Start a move operation.
     pub fn move_pick(&mut self, pos: Coord) -> ah::Result<()> {
         if pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT {
-            return Err(ah::format_err!("move_pick: Coordinates out of bounds."));
+            return Err(ah::format_err!("move_pick: Coordinates ({}) out of bounds.", pos));
         }
         if self.moving != MoveState::NoMove {
             return Err(ah::format_err!("move_pick: Already moving."))
         }
 
-        match self.get_field_state(pos) {
+        let mut token_id = MSG_MOVE_TOKEN_CURRENT;
+        let result = match self.get_field_state(pos) {
             FieldState::Unused | FieldState::Empty => {
                 Err(ah::format_err!("move_pick: Move from empty field."))
             },
             FieldState::Wolf => {
                 self.moving = MoveState::Wolf(pos);
+                token_id = MSG_MOVE_TOKEN_WOLF;
                 self.set_field_state(pos, FieldState::Wolf);
                 Ok(())
             },
             FieldState::Sheep => {
                 self.moving = MoveState::Sheep(pos);
+                token_id = MSG_MOVE_TOKEN_SHEEP;
                 self.set_field_state(pos, FieldState::Sheep);
                 Ok(())
             },
+        };
+
+        self.i_am_moving = result.is_ok();
+
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PICK,
+                                                   token_id,
+                                                   pos.x as u32,
+                                                   pos.y as u32) {
+                eprintln!("Failed to transmit move: {}", e);
+            }
         }
+        result
     }
 
-    fn do_move_place(&mut self, pos: Coord) {
+    fn do_move_put(&mut self, pos: Coord) {
         match self.moving {
             MoveState::NoMove =>
                 eprintln!("Internal error: Invalid move source."),
@@ -423,46 +675,80 @@ impl GameState {
     }
 
     /// End a move operation.
-    pub fn move_place(&mut self, pos: Coord) -> ah::Result<()> {
+    pub fn move_put(&mut self, pos: Coord) -> ah::Result<()> {
         if pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT {
             return Err(ah::format_err!("move_pick: Coordinates out of bounds."));
         }
-        let from_pos = match self.moving {
+        let (from_pos, token_id) = match self.moving {
             MoveState::NoMove =>
-                return Err(ah::format_err!("move_place: Not moving.")),
-            MoveState::Wolf(p) => p,
-            MoveState::Sheep(p) => p,
+                return Err(ah::format_err!("move_put: Not moving.")),
+            MoveState::Wolf(p) => (p, MSG_MOVE_TOKEN_WOLF),
+            MoveState::Sheep(p) => (p, MSG_MOVE_TOKEN_SHEEP),
         };
 
-        match self.get_field_state(pos) {
+        let result = match self.get_field_state(pos) {
             FieldState::Unused |
             FieldState::Wolf |
             FieldState::Sheep => {
-                Err(ah::format_err!("move_place: Field occupied."))
+                Err(ah::format_err!("move_put: Field occupied."))
             },
             FieldState::Empty => {
                 match self.validate_move(from_pos, pos) {
                     ValidationResult::Invalid =>
-                        Err(ah::format_err!("move_place: Invalid move.")),
+                        Err(ah::format_err!("move_put: Invalid move.")),
                     ValidationResult::Valid => {
-                        self.do_move_place(pos);
+                        self.do_move_put(pos);
                         Ok(())
                     },
                     ValidationResult::ValidBeat(beat_pos) => {
                         self.beat(from_pos, pos, beat_pos);
-                        self.do_move_place(pos);
+                        self.do_move_put(pos);
                         Ok(())
                     },
                 }
             },
+        };
+
+        self.i_am_moving = !result.is_ok();
+
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PUT,
+                                                   token_id,
+                                                   pos.x as u32,
+                                                   pos.y as u32) {
+                eprintln!("Failed to transmit move: {}", e);
+            }
         }
+        result
     }
 
     /// Abort a move operation.
     pub fn move_abort(&mut self) {
-        if self.moving != MoveState::NoMove {
-            self.moving = MoveState::NoMove;
+        match self.moving {
+            MoveState::NoMove => {
+                self.i_am_moving = false;
+            },
+            MoveState::Wolf(coord) |
+            MoveState::Sheep(coord) => {
+                self.moving = MoveState::NoMove;
+                self.i_am_moving = false;
+
+                if let Some(client) = self.client.as_mut() {
+                    if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_ABORT,
+                                                           MSG_MOVE_TOKEN_CURRENT,
+                                                           coord.x as u32,
+                                                           coord.y as u32) {
+                        eprintln!("Failed to transmit move: {}", e);
+                    }
+                }
+            },
         }
+    }
+}
+
+impl Drop for GameState {
+    fn drop(&mut self) {
+        self.disconnect();
     }
 }
 

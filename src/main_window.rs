@@ -17,6 +17,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+use anyhow as ah;
 use crate::board::{
     BOARD_LINES,
     BoardIterator,
@@ -129,6 +130,10 @@ impl DrawingArea {
             game,
             moving_token: MovingToken::NoToken,
         }
+    }
+
+    pub fn redraw(&self) {
+        self.widget.queue_draw();
     }
 
     fn draw_background(&self, cairo: &cairo::Context) {
@@ -266,7 +271,7 @@ impl DrawingArea {
         let move_state = self.game.borrow().get_move_state();
         self.update_moving_token(move_state, x, y);
         if move_state != MoveState::NoMove {
-            self.widget.queue_draw();
+            self.redraw();
         }
     }
 
@@ -290,7 +295,7 @@ impl DrawingArea {
                             if game.get_move_state() != MoveState::NoMove {
                                 match game.get_field_state(pos) {
                                     FieldState::Empty => {
-                                        if let Err(_) = game.move_place(pos) {
+                                        if let Err(_) = game.move_put(pos) {
                                             game.move_abort();
                                         }
                                     },
@@ -310,7 +315,7 @@ impl DrawingArea {
                 }
                 let move_state = self.game.borrow().get_move_state();
                 self.update_moving_token(move_state, x, y);
-                self.widget.queue_draw();
+                self.redraw();
             },
             _ => (),
         };
@@ -355,22 +360,33 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn new(app: &gtk::Application) -> MainWindow {
+    pub fn new(app:               &gtk::Application,
+               connect_to_server: Option<String>,
+               room_name:         String) -> ah::Result<MainWindow> {
         let glade_source = include_str!("main_window.glade");
         let builder = gtk::Builder::from_string(glade_source);
 
         let mainwnd: gtk::ApplicationWindow = builder.get_object("mainwindow").unwrap();
         mainwnd.set_application(Some(app));
         mainwnd.set_title("Wolfsmühle");
-        let mainwnd2 = mainwnd.clone();
 
-        let game = Rc::new(RefCell::new(GameState::new()));
+        let game = Rc::new(RefCell::new(GameState::new(connect_to_server, room_name)?));
 
         let draw = Rc::new(RefCell::new(DrawingArea::new(
             builder.get_object("drawing_area").unwrap(),
             Rc::clone(&game))));
-        let draw2 = Rc::clone(&draw);
 
+        let game2 = Rc::clone(&game);
+        let draw2 = Rc::clone(&draw);
+        glib::timeout_add_local(100, move || {
+            if game2.borrow_mut().poll_server() {
+                draw2.borrow().redraw();
+            }
+            glib::Continue(true)
+        });
+
+        let draw2 = Rc::clone(&draw);
+        let mainwnd2 = mainwnd.clone();
         builder.connect_signals(move |_builder, handler_name| {
             let mainwnd2 = mainwnd2.clone();
             let draw2 = Rc::clone(&draw2);
@@ -402,11 +418,11 @@ impl MainWindow {
             }
         });
 
-        MainWindow {
+        Ok(MainWindow {
             mainwnd,
             //draw,
             //game,
-        }
+        })
     }
 
     pub fn main_window(self) -> gtk::ApplicationWindow {
