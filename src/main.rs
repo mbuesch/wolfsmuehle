@@ -65,7 +65,7 @@ struct Opts {
 fn server_fn(opt: &Opts) -> ah::Result<()> {
     let mut addr = &opt.server.as_ref().unwrap()[..];
     if addr == "default" {
-        addr = "0.0.0.0:34596";
+        addr = "0.0.0.0:5596";
     }
     println!("Running dedicated server on {} ...", addr);
     let mut s = Server::new(addr)?;
