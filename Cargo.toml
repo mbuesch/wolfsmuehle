@@ -1,6 +1,9 @@
+# -*- coding: utf-8 -*-
+
 [package]
+edition         = "2018"
 name            = "wolfsmuehle"
-description     = ""
+description     = "Wolfsmühle - Board game"
 version         = "1.0.0"
 homepage        = "https://bues.ch/"
 license         = "GPL-2.0-or-later"
@@ -12,8 +15,6 @@ categories      = []
 keywords        = ["boardgame"]
 
 exclude         = ["/maintenance/"]
-
-edition         = "2018"
 
 [features]
 default         = ["gui", "server"]
