@@ -169,6 +169,8 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
             MsgJoin::from_bytes(header, &data[offset..])?,
         MSG_ID_LEAVE =>
             MsgLeave::from_bytes(header, &data[offset..])?,
+        MSG_ID_RESET =>
+            MsgReset::from_bytes(header, &data[offset..])?,
         MSG_ID_REQGAMESTATE =>
             MsgReqGameState::from_bytes(header, &data[offset..])?,
         MSG_ID_GAMESTATE =>

@@ -321,6 +321,13 @@ impl DrawingArea {
         };
     }
 
+    fn reset_game(&mut self) {
+        let mut game = self.game.borrow_mut();
+        game.reset_game();
+        self.moving_token = MovingToken::NoToken;
+        self.redraw();
+    }
+
     fn gsignal_draw(&self, param: &[glib::Value]) -> Option<glib::Value> {
         let _widget = sigparam!(param[0], gtk::DrawingArea);
         let cairo = sigparam!(param[1], cairo::Context);
@@ -350,6 +357,12 @@ impl DrawingArea {
         let (x, y) = event.get_coords().unwrap();
         self.mousebutton(x, y, event.get_button().unwrap(), false);
         Some(false.to_value())
+    }
+
+    fn gsignal_newgame(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        let _menu_item = sigparam!(param[0], gtk::MenuItem);
+        self.reset_game();
+        None
     }
 }
 
@@ -399,6 +412,8 @@ impl MainWindow {
                     Box::new(move |p| draw2.borrow_mut().gsignal_buttonpress(p)),
                 "handler_drawingarea_buttonrelease" =>
                     Box::new(move |p| draw2.borrow_mut().gsignal_buttonrelease(p)),
+                "handler_newgame" =>
+                    Box::new(move |p| draw2.borrow_mut().gsignal_newgame(p)),
                 "handler_about" => {
                     Box::new(move |_p| {
                         let msg = MessageDialog::new(Some(&mainwnd2),

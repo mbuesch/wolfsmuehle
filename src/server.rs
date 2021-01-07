@@ -94,8 +94,9 @@ impl ServerInstance {
         };
 
         match msg_type {
-            MsgType::MsgTypeReset(_msg) => {
+            MsgType::MsgTypeReset(msg) => {
                 room.get_game_state_mut().reset_game();
+                self.stream.write(&MsgResult::new(*msg, MSG_RESULT_OK)?.to_bytes())?;
             },
             MsgType::MsgTypeReqGameState(_msg) => {
                 self.stream.write(&room.get_game_state().make_state_message().to_bytes())?;

@@ -20,10 +20,8 @@
 use anyhow as ah;
 use crate::board::{
     BOARD_HEIGHT,
-    BOARD_POSITIONS,
     BOARD_WIDTH,
     BoardIterator,
-    PosType,
     coord_is_on_board,
     is_on_main_diag,
 };
@@ -177,13 +175,14 @@ pub struct Stats {
 }
 
 pub struct GameState {
-    fields:         [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
-    moving:         MoveState,
-    i_am_moving:    bool,
-    stats:          Stats,
-    turn:           Turn,
-    just_beaten:    Option<Coord>,
-    client:         Option<Client>,
+    fields:             [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
+    moving:             MoveState,
+    i_am_moving:        bool,
+    stats:              Stats,
+    turn:               Turn,
+    just_beaten:        Option<Coord>,
+    client:             Option<Client>,
+    orig_sheep_count:   u8,
 }
 
 impl GameState {
@@ -198,12 +197,13 @@ impl GameState {
         };
         let mut game = GameState {
             fields,
-            moving:         MoveState::NoMove,
-            i_am_moving:    false,
+            moving:             MoveState::NoMove,
+            i_am_moving:        false,
             stats,
-            turn:           Turn::Sheep,
-            just_beaten:    None,
-            client:         None,
+            turn:               Turn::Sheep,
+            just_beaten:        None,
+            client:             None,
+            orig_sheep_count:   0,
         };
         game.reset_game();
         if let Some(connect_to_server) = connect_to_server {
@@ -214,27 +214,16 @@ impl GameState {
     }
 
     pub fn reset_game(&mut self) {
-        self.stats.wolves = 0;
-        self.stats.sheep = 0;
-        self.stats.sheep_beaten = 0;
-
+        self.orig_sheep_count = 0;
         for coord in BoardIterator::new() {
             let x = coord.x as usize;
             let y = coord.y as usize;
-            match BOARD_POSITIONS[y][x] {
-                PosType::Invalid =>
+            self.fields[y][x] = INITIAL_STATE[y][x];
+            match self.fields[y][x] {
+                FieldState::Sheep =>
+                    self.orig_sheep_count += 1,
+                FieldState::Wolf | FieldState::Unused | FieldState::Empty =>
                     (),
-                PosType::Barn | PosType::Field => {
-                    self.fields[y][x] = INITIAL_STATE[y][x];
-                    match self.fields[y][x] {
-                        FieldState::Wolf =>
-                            self.stats.wolves += 1,
-                        FieldState::Sheep =>
-                            self.stats.sheep += 1,
-                        FieldState::Unused | FieldState::Empty =>
-                            (),
-                    }
-                },
             }
         }
 
@@ -242,6 +231,32 @@ impl GameState {
         self.i_am_moving = false;
         self.turn = Turn::Sheep;
         self.just_beaten = None;
+
+        self.recalc_stats();
+
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_reset() {
+                eprintln!("Failed to game-reset: {}", e);
+            }
+        }
+    }
+
+    fn recalc_stats(&mut self) {
+        self.stats.wolves = 0;
+        self.stats.sheep = 0;
+        for coord in BoardIterator::new() {
+            let x = coord.x as usize;
+            let y = coord.y as usize;
+            match self.fields[y][x] {
+                FieldState::Wolf =>
+                    self.stats.wolves += 1,
+                FieldState::Sheep =>
+                    self.stats.sheep += 1,
+                FieldState::Unused | FieldState::Empty =>
+                    (),
+            }
+        }
+        self.stats.sheep_beaten = self.orig_sheep_count - self.stats.sheep;
     }
 
     pub fn make_state_message(&self) -> MsgGameState {
@@ -322,6 +337,10 @@ impl GameState {
             if turn != self.turn {
                 self.turn = turn;
                 redraw = true;
+            }
+
+            if redraw {
+                self.recalc_stats();
             }
         }
         redraw
