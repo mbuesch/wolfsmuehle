@@ -30,6 +30,7 @@ use std::net::{
     ToSocketAddrs,
 };
 use std::sync::{Mutex, MutexGuard, Arc};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use crate::game_state::GameState;
 use crate::protocol::{
@@ -44,6 +45,8 @@ use crate::protocol::{
     message_from_bytes,
     net_sync,
 };
+
+const SERVER_CONN_LIMIT: usize = 10;
 
 /// Server instance thread corresponding to one connected client.
 struct ServerInstance {
@@ -299,8 +302,9 @@ impl ServerRoom {
 }
 
 pub struct Server {
-    listener:   TcpListener,
-    rooms:      Arc<Mutex<Vec<ServerRoom>>>
+    listener:       TcpListener,
+    active_conns:   Arc<AtomicUsize>,
+    rooms:          Arc<Mutex<Vec<ServerRoom>>>
 }
 
 impl Server {
@@ -308,7 +312,8 @@ impl Server {
         let listener = TcpListener::bind(addr)?;
         Ok(Server {
             listener,
-            rooms:      Arc::new(Mutex::new(vec![])),
+            active_conns:   Arc::new(AtomicUsize::new(0)),
+            rooms:          Arc::new(Mutex::new(vec![])),
         })
     }
 
@@ -326,18 +331,26 @@ impl Server {
         for stream in self.listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    let thread_rooms = Arc::clone(&self.rooms);
-                    thread::spawn(move || {
-                        match ServerInstance::new(stream, thread_rooms) {
-                            Ok(mut instance) => {
-                                instance.run_loop();
-                                println!("Server thread exiting.");
-                            },
-                            Err(e) => {
-                                eprintln!("Could not construct server instance: {}", e);
-                            },
-                        };
-                    });
+                    if self.active_conns.load(Ordering::Acquire) < SERVER_CONN_LIMIT {
+                        self.active_conns.fetch_add(1, Ordering::SeqCst);
+
+                        let thread_rooms = Arc::clone(&self.rooms);
+                        let thread_active_conns = Arc::clone(&self.active_conns);
+                        thread::spawn(move || {
+                            match ServerInstance::new(stream, thread_rooms) {
+                                Ok(mut instance) => {
+                                    instance.run_loop();
+                                    println!("Server thread exiting.");
+                                },
+                                Err(e) => {
+                                    eprintln!("Could not construct server instance: {}", e);
+                                },
+                            };
+                            thread_active_conns.fetch_sub(1, Ordering::SeqCst);
+                        });
+                    } else {
+                        stream.shutdown(Shutdown::Both).ok();
+                    }
                 },
                 Err(e) => {
                     return Err(ah::format_err!("Connection failed: {}", e));
