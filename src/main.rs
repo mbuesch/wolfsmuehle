@@ -34,6 +34,7 @@ use anyhow as ah;
 use crate::main_window::MainWindow;
 #[cfg(feature="server")]
 use crate::server::Server;
+#[cfg(feature="gui")]
 use expect_exit::ExpectedWithError;
 #[cfg(feature="gui")]
 use gio::prelude::*;
