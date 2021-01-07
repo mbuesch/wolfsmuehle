@@ -18,18 +18,26 @@
 //
 
 mod board;
+#[cfg(feature="server")]
 mod client;
 mod coord;
 mod game_state;
+#[cfg(feature="gui")]
 mod main_window;
+#[cfg(feature="server")]
 mod protocol;
+#[cfg(feature="server")]
 mod server;
 
 use anyhow as ah;
+#[cfg(feature="gui")]
 use crate::main_window::MainWindow;
+#[cfg(feature="server")]
 use crate::server::Server;
 use expect_exit::ExpectedWithError;
+#[cfg(feature="gui")]
 use gio::prelude::*;
+#[cfg(feature="gui")]
 use gtk::prelude::*;
 //use std::env;
 use structopt::StructOpt;
@@ -38,18 +46,22 @@ use structopt::StructOpt;
 #[structopt(name="wolfsmühle")]
 struct Opts {
     /// Run a dedicated server.
+    #[cfg(feature="server")]
     #[structopt(short, long)]
     server: Option<String>,
 
-    /// Server room to open.
+    /// Server room to open/join.
+    #[cfg(feature="server")]
     #[structopt(short="r", long)]
     server_room: Option<Vec<String>>,
 
     /// Connect to a server.
+    #[cfg(feature="server")]
     #[structopt(short, long)]
     connect: Option<String>,
 }
 
+#[cfg(feature="server")]
 fn server_fn(opt: &Opts) -> ah::Result<()> {
     let mut addr = &opt.server.as_ref().unwrap()[..];
     if addr == "default" {
@@ -71,6 +83,7 @@ fn server_fn(opt: &Opts) -> ah::Result<()> {
     Ok(())
 }
 
+#[cfg(feature="gui")]
 fn app_fn(app: &gtk::Application) {
     let opt = Opts::from_args();
 
@@ -100,9 +113,14 @@ fn app_fn(app: &gtk::Application) {
 fn main() -> ah::Result<()> {
     let opt = Opts::from_args();
 
+    #[cfg(feature="server")]
     if opt.server.is_some() {
         server_fn(&opt)?;
-    } else {
+        return Ok(());
+    }
+
+    #[cfg(feature="gui")]
+    if opt.server.is_none() {
         let app = gtk::Application::new(None, gio::ApplicationFlags::FLAGS_NONE)?;
         app.connect_activate(app_fn);
         //let args: Vec<_> = env::args().collect();
