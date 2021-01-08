@@ -356,9 +356,15 @@ impl Server {
                             stream.shutdown(Shutdown::Both).ok();
                             thread_active_conns.fetch_sub(1, Ordering::Release);
                         });
+
                     } else {
+                        let peer_addr = match stream.peer_addr() {
+                            Ok(peer_addr) => peer_addr.to_string(),
+                            Err(_) => "unknown".to_string(),
+                        };
                         stream.shutdown(Shutdown::Both).ok();
-                        eprintln!("Rejected connection: Too many connections.");
+                        eprintln!("Rejected connection from '{}': Too many connections.",
+                                  peer_addr);
                         self.active_conns.fetch_sub(1, Ordering::Release);
                     }
                 },
