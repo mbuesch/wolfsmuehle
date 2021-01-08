@@ -31,6 +31,7 @@ use crate::game_state::{
     FieldState,
     GameState,
     MoveState,
+    WinState,
 };
 use crate::player::PlayerMode;
 use expect_exit::exit_unwind;
@@ -254,10 +255,27 @@ impl DrawingArea {
         }
     }
 
+    fn draw_game_state(&self, cairo: &cairo::Context) {
+        let win_state = self.game.borrow().get_win_state();
+        if win_state != WinState::Undecided {
+            cairo.set_source_rgb(1.0, 0.0, 0.0);
+            cairo.set_font_size(40.0);
+            cairo.select_font_face("Serif",
+                                   cairo::FontSlant::Normal,
+                                   cairo::FontWeight::Bold);
+            let text = format!("{} won!", win_state);
+            let extents = cairo.text_extents(&text);
+            cairo.move_to((self.widget.get_allocated_width() as f64 / 2.0) - (extents.width / 2.0),
+                          (self.widget.get_allocated_height() as f64 / 2.0) + (extents.height / 2.0));
+            cairo.show_text(&text);
+        }
+    }
+
     fn draw(&self, cairo: cairo::Context) {
         self.draw_background(&cairo);
         self.draw_board_lines(&cairo);
         self.draw_tokens(&cairo);
+        self.draw_game_state(&cairo);
     }
 
     fn update_moving_token(&mut self, move_state: MoveState, x: f64, y: f64) {
