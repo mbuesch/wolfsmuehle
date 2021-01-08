@@ -113,7 +113,7 @@ impl BoardIterator {
 impl Iterator for BoardIterator {
     type Item = Coord;
 
-    fn next(&mut self) -> Option<Coord> {
+    fn next(&mut self) -> Option<Self::Item> {
         loop {
             let mut coord = Some(coord!(self.x, self.y));
             if self.x >= BOARD_WIDTH - 1 {
@@ -136,6 +136,30 @@ impl Iterator for BoardIterator {
                     }
                 },
             }
+        }
+    }
+}
+
+pub struct BoardPosIterator {
+    iter: BoardIterator,
+}
+
+impl BoardPosIterator {
+    pub fn new() -> BoardPosIterator {
+        BoardPosIterator {
+            iter: BoardIterator::new(),
+        }
+    }
+}
+
+impl Iterator for BoardPosIterator {
+    type Item = (Coord, PosType);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.iter.next() {
+            Some(coord) =>
+                Some((coord, BOARD_POSITIONS[coord.y as usize][coord.x as usize])),
+            None => None,
         }
     }
 }

@@ -22,6 +22,8 @@ use crate::board::{
     BOARD_HEIGHT,
     BOARD_WIDTH,
     BoardIterator,
+    BoardPosIterator,
+    PosType,
     coord_is_on_board,
     is_on_main_diag,
 };
@@ -45,6 +47,7 @@ use crate::protocol::{
     MsgMove,
     MsgType,
 };
+use std::fmt;
 
 const PRINT_STATE: bool = true;
 
@@ -83,6 +86,23 @@ fn num_to_field_state(field_state: u32) -> ah::Result<FieldState> {
         2 => Ok(FieldState::Wolf),
         3 => Ok(FieldState::Sheep),
         s => Err(ah::format_err!("Unknown field state value: {}", s)),
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum WinState {
+    Undecided,
+    Wolf,
+    Sheep,
+}
+
+impl fmt::Display for WinState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            WinState::Undecided => "undecided",
+            WinState::Wolf => "wolf",
+            WinState::Sheep => "sheep",
+        })
     }
 }
 
@@ -436,6 +456,33 @@ impl GameState {
         self.stats
     }
 
+    pub fn get_win_state(&self) -> WinState {
+        if self.get_stats().sheep < 7 {
+            WinState::Wolf
+        } else {
+            let mut sheep_win = true;
+            for (coord, pos_type) in BoardPosIterator::new() {
+                let x = coord.x as usize;
+                let y = coord.y as usize;
+                match pos_type {
+                    PosType::Invalid => (),
+                    PosType::Field => (),
+                    PosType::Barn => {
+                        if self.fields[y][x] != FieldState::Sheep {
+                            sheep_win = false;
+                        }
+                    },
+                }
+            }
+            if sheep_win {
+                WinState::Sheep
+            } else {
+                //TODO check: wolf is unable to move -> wins.
+                WinState::Undecided
+            }
+        }
+    }
+
     /// Set the state of a board field.
     fn set_field_state(&mut self, pos: Coord, state: FieldState) {
         if coord_is_on_board(pos) {
@@ -695,6 +742,10 @@ impl GameState {
         }
         if self.player_mode == PlayerMode::Spectator {
             return Err(ah::format_err!("move_pick: Player is spectator. Not allowed to move."));
+        }
+        let win_state = self.get_win_state();
+        if win_state != WinState::Undecided {
+            return Err(ah::format_err!("move_pick: Already decided: {}", win_state));
         }
 
         // Try to pick the token. This might fail.
