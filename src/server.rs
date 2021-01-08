@@ -33,6 +33,7 @@ use std::sync::{Mutex, MutexGuard, Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use crate::game_state::GameState;
+use crate::player::PlayerMode;
 use crate::protocol::{
     MSG_BUFFER_SIZE,
     MSG_RESULT_OK,
@@ -52,6 +53,7 @@ struct ServerInstance<'a> {
     peer_addr:      SocketAddr,
     rooms:          Arc<Mutex<Vec<ServerRoom>>>,
     joined_room:    Option<String>,
+    player_mode:    PlayerMode,
 }
 
 fn find_room<'a>(rooms: &'a mut MutexGuard<'_, Vec<ServerRoom>>,
@@ -75,6 +77,7 @@ impl<'a> ServerInstance<'a> {
             peer_addr,
             rooms,
             joined_room: None,
+            player_mode: PlayerMode::Both,//TODO
         })
     }
 
@@ -96,18 +99,18 @@ impl<'a> ServerInstance<'a> {
 
         match msg_type {
             MsgType::MsgTypeReset(msg) => {
-                room.get_game_state_mut().reset_game();
+                room.get_game_state(self.player_mode).reset_game(false);
                 self.stream.write(&MsgResult::new(*msg, MSG_RESULT_OK)?.to_bytes())?;
             },
             MsgType::MsgTypeReqGameState(_msg) => {
-                self.stream.write(&room.get_game_state().make_state_message().to_bytes())?;
+                self.stream.write(&room.get_game_state(self.player_mode).make_state_message().to_bytes())?;
             },
             MsgType::MsgTypeGameState(msg) => {
                 //TODO
                 self.stream.write(&MsgResult::new(*msg, MSG_RESULT_OK)?.to_bytes())?;
             },
             MsgType::MsgTypeMove(msg) => {
-                match room.get_game_state_mut().server_handle_rx_msg_move(&msg) {
+                match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
                     Ok(_) => {
                         self.stream.write(&MsgResult::new(*msg, MSG_RESULT_OK)?.to_bytes())?;
                     },
@@ -278,7 +281,9 @@ struct ServerRoom {
 
 impl ServerRoom {
     fn new(name: String) -> ah::Result<ServerRoom> {
-        let game_state = GameState::new(None, name.to_string())?;
+        let game_state = GameState::new(PlayerMode::Both,
+                                        None,
+                                        name.to_string())?;
         Ok(ServerRoom {
             name,
             game_state,
@@ -289,11 +294,8 @@ impl ServerRoom {
         &self.name
     }
 
-    fn get_game_state(&self) -> &GameState {
-        &self.game_state
-    }
-
-    fn get_game_state_mut(&mut self) -> &mut GameState {
+    fn get_game_state(&mut self, player_mode: PlayerMode) -> &mut GameState {
+        self.game_state.set_player_mode(player_mode);
         &mut self.game_state
     }
 }

@@ -44,6 +44,32 @@ use crate::protocol::{
 };
 use std::time::Instant;
 
+macro_rules! send_wait_for_ok {
+    ($self:expr, $name:literal, $msg:expr) => {
+        let msg = $msg;
+        $self.stream.write(&msg.to_bytes())?;
+        $self.wait_for_reply($name,
+            |m| {
+                match m.get_message() {
+                    MsgType::MsgTypeResult(result) => {
+                        if result.is_in_reply_to(&msg) {
+                            if result.is_ok() {
+                                Some(Ok(()))
+                            } else {
+                                Some(Err(ah::format_err!("Server replied not-Ok ({}).",
+                                                         result.get_result_code())))
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            }
+        )?;
+    }
+}
+
 pub struct Client {
     stream:         TcpStream,
     tail_buffer:    Option<Vec<u8>>,
@@ -63,15 +89,16 @@ impl Client {
     }
 
     fn wait_for_reply<F>(&mut self, name: &str, check_match: F) -> ah::Result<()>
-        where F: Fn(Box<dyn Message>) -> bool
+        where F: Fn(Box<dyn Message>) -> Option<ah::Result<()>>
     {
         let begin = Instant::now();
         while Instant::now().duration_since(begin).as_millis() < 3000 {
             match self.poll() {
                 Some(messages) => {
                     for m in messages {
-                        if check_match(m) {
-                            return Ok(());
+                        match check_match(m) {
+                            Some(r) => return r,
+                            None => (),
                         }
                     }
                 },
@@ -90,40 +117,29 @@ impl Client {
     /// Send a ping message to the server and wait for the pong response.
     pub fn send_ping(&mut self) -> ah::Result<()> {
         self.stream.write(&MsgPing::new().to_bytes())?;
-        self.wait_for_reply("ping", |m| { match m.get_message() {
-            MsgType::MsgTypePong(_) => true,
-            _ => false,
-        }})?;
+        self.wait_for_reply("ping",
+            |m| {
+                match m.get_message() {
+                    MsgType::MsgTypePong(_) => Some(Ok(())),
+                    _ => None,
+                }
+            }
+        )?;
         Ok(())
     }
 
     pub fn send_join(&mut self, room_name: &str) -> ah::Result<()> {
-        let join = MsgJoin::new(room_name)?;
-        self.stream.write(&join.to_bytes())?;
-        self.wait_for_reply("join", |m| { match m.get_message() {
-            MsgType::MsgTypeResult(result) => result.is_in_reply_to(&join) && result.is_ok(),
-            _ => false,
-        }})?;
+        send_wait_for_ok!(self, "join", MsgJoin::new(room_name)?);
         Ok(())
     }
 
     pub fn send_leave(&mut self) -> ah::Result<()> {
-        let leave = MsgLeave::new();
-        self.stream.write(&leave.to_bytes())?;
-        self.wait_for_reply("leave", |m| { match m.get_message() {
-            MsgType::MsgTypeResult(result) => result.is_in_reply_to(&leave) && result.is_ok(),
-            _ => false,
-        }})?;
+        send_wait_for_ok!(self, "leave", MsgLeave::new());
         Ok(())
     }
 
     pub fn send_reset(&mut self) -> ah::Result<()> {
-        let reset = MsgReset::new();
-        self.stream.write(&reset.to_bytes())?;
-        self.wait_for_reply("reset", |m| { match m.get_message() {
-            MsgType::MsgTypeResult(result) => result.is_in_reply_to(&reset) && result.is_ok(),
-            _ => false,
-        }})?;
+        send_wait_for_ok!(self, "reset", MsgReset::new());
         Ok(())
     }
 
@@ -137,10 +153,8 @@ impl Client {
                            token: u32,
                            coord_x: u32,
                            coord_y: u32) -> ah::Result<()> {
-        self.stream.write(&MsgMove::new(action,
-                                        token,
-                                        coord_x,
-                                        coord_y).to_bytes())?;
+        send_wait_for_ok!(self, "move",
+                          MsgMove::new(action, token, coord_x, coord_y));
         Ok(())
     }
 

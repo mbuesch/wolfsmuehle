@@ -32,6 +32,7 @@ use crate::game_state::{
     GameState,
     MoveState,
 };
+use crate::player::PlayerMode;
 use expect_exit::exit_unwind;
 use gdk;
 use gio::prelude::*;
@@ -323,7 +324,7 @@ impl DrawingArea {
 
     fn reset_game(&mut self) {
         let mut game = self.game.borrow_mut();
-        game.reset_game();
+        game.reset_game(false);
         self.moving_token = MovingToken::NoToken;
         self.redraw();
     }
@@ -383,7 +384,9 @@ impl MainWindow {
         mainwnd.set_application(Some(app));
         mainwnd.set_title("Wolfsmühle");
 
-        let game = Rc::new(RefCell::new(GameState::new(connect_to_server, room_name)?));
+        let game = Rc::new(RefCell::new(GameState::new(PlayerMode::Both,
+                                                       connect_to_server,
+                                                       room_name)?));
 
         let draw = Rc::new(RefCell::new(DrawingArea::new(
             builder.get_object("drawing_area").unwrap(),

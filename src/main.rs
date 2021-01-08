@@ -24,6 +24,7 @@ mod coord;
 mod game_state;
 #[cfg(feature="gui")]
 mod main_window;
+mod player;
 #[cfg(feature="server")]
 mod protocol;
 #[cfg(feature="server")]

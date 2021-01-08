@@ -31,6 +31,7 @@ use crate::coord::{
     CoordAxis,
 };
 use crate::coord;
+use crate::player::PlayerMode;
 use crate::protocol::{
     MSG_MOVE_ACTION_ABORT,
     MSG_MOVE_ACTION_MOVE,
@@ -175,6 +176,7 @@ pub struct Stats {
 }
 
 pub struct GameState {
+    player_mode:        PlayerMode,
     fields:             [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
     moving:             MoveState,
     i_am_moving:        bool,
@@ -187,8 +189,11 @@ pub struct GameState {
 
 impl GameState {
     /// Construct a new game state.
-    pub fn new(connect_to_server: Option<String>,
-               room_name: String) -> ah::Result<GameState> {
+    pub fn new(player_mode:         PlayerMode,
+               connect_to_server:   Option<String>,
+               room_name:           String)
+               -> ah::Result<GameState> {
+
         let fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
         let stats = Stats {
             wolves:         0,
@@ -196,6 +201,7 @@ impl GameState {
             sheep_beaten:   0,
         };
         let mut game = GameState {
+            player_mode,
             fields,
             moving:             MoveState::NoMove,
             i_am_moving:        false,
@@ -205,7 +211,7 @@ impl GameState {
             client:             None,
             orig_sheep_count:   0,
         };
-        game.reset_game();
+        game.reset_game(true);
         if let Some(connect_to_server) = connect_to_server {
             game.connect(connect_to_server, room_name)?;
         }
@@ -213,7 +219,12 @@ impl GameState {
         Ok(game)
     }
 
-    pub fn reset_game(&mut self) {
+    pub fn reset_game(&mut self, force: bool) {
+        if self.player_mode == PlayerMode::Spectator && !force {
+            eprintln!("reset_game: Player is spectator. Not allowed to reset the game.");
+            return;
+        }
+
         self.orig_sheep_count = 0;
         for coord in BoardIterator::new() {
             let x = coord.x as usize;
@@ -239,6 +250,10 @@ impl GameState {
                 eprintln!("Failed to game-reset: {}", e);
             }
         }
+    }
+
+    pub fn set_player_mode(&mut self, player_mode: PlayerMode) {
+        self.player_mode = player_mode;
     }
 
     fn recalc_stats(&mut self) {
@@ -489,6 +504,24 @@ impl GameState {
                 (),
         }
 
+        // Check if the player is allowed to move this token.
+        match self.player_mode {
+            PlayerMode::Spectator =>
+                return ValidationResult::Invalid,
+            PlayerMode::Both =>
+                (),
+            PlayerMode::Wolf => {
+                if from_state != FieldState::Wolf {
+                    return ValidationResult::Invalid;
+                }
+            },
+            PlayerMode::Sheep => {
+                if from_state != FieldState::Sheep {
+                    return ValidationResult::Invalid;
+                }
+            },
+        }
+
         let distx = to_pos.x as isize - from_pos.x as isize;
         let centerx = from_pos.x as isize + (distx / 2);
         let disty = to_pos.y as isize - from_pos.y as isize;
@@ -635,47 +668,55 @@ impl GameState {
         self.print_turn();
     }
 
+    fn move_pick_send_client(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PICK,
+                                                   token_id,
+                                                   pos.x as u32,
+                                                   pos.y as u32) {
+                let msg = format!("Move-pick failed on server: {}", e);
+                eprintln!("{}", msg);
+                return Err(ah::format_err!("{}", msg));
+            }
+        }
+        Ok(())
+    }
+
     /// Start a move operation.
     pub fn move_pick(&mut self, pos: Coord) -> ah::Result<()> {
         if pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT {
             return Err(ah::format_err!("move_pick: Coordinates ({}) out of bounds.", pos));
         }
         if self.moving != MoveState::NoMove {
-            return Err(ah::format_err!("move_pick: Already moving."))
+            return Err(ah::format_err!("move_pick: Already moving."));
+        }
+        if self.player_mode == PlayerMode::Spectator {
+            return Err(ah::format_err!("move_pick: Player is spectator. Not allowed to move."));
         }
 
-        let mut token_id = MSG_MOVE_TOKEN_CURRENT;
+        // Try to pick the token. This might fail.
         let result = match self.get_field_state(pos) {
             FieldState::Unused | FieldState::Empty => {
                 Err(ah::format_err!("move_pick: Move from empty field."))
             },
             FieldState::Wolf => {
+                self.move_pick_send_client(pos, MSG_MOVE_TOKEN_WOLF)?;
                 self.moving = MoveState::Wolf(pos);
-                token_id = MSG_MOVE_TOKEN_WOLF;
                 self.set_field_state(pos, FieldState::Wolf);
                 Ok(())
             },
             FieldState::Sheep => {
+                self.move_pick_send_client(pos, MSG_MOVE_TOKEN_SHEEP)?;
                 self.moving = MoveState::Sheep(pos);
-                token_id = MSG_MOVE_TOKEN_SHEEP;
                 self.set_field_state(pos, FieldState::Sheep);
                 Ok(())
             },
         };
-
         self.i_am_moving = result.is_ok();
-
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PICK,
-                                                   token_id,
-                                                   pos.x as u32,
-                                                   pos.y as u32) {
-                eprintln!("Failed to transmit move: {}", e);
-            }
-        }
         result
     }
 
+    /// Actually commit the move-put.
     fn do_move_put(&mut self, pos: Coord) {
         match self.moving {
             MoveState::NoMove =>
@@ -693,11 +734,30 @@ impl GameState {
         self.moving = MoveState::NoMove;
     }
 
+    /// Send the move-put to the server.
+    fn move_put_send_client(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PUT,
+                                                   token_id,
+                                                   pos.x as u32,
+                                                   pos.y as u32) {
+                let msg = format!("Move failed on server: {}", e);
+                eprintln!("{}", msg);
+                return Err(ah::format_err!("{}", msg));
+            }
+        }
+        Ok(())
+    }
+
     /// End a move operation.
     pub fn move_put(&mut self, pos: Coord) -> ah::Result<()> {
         if pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT {
-            return Err(ah::format_err!("move_pick: Coordinates out of bounds."));
+            return Err(ah::format_err!("move_put: Coordinates out of bounds."));
         }
+        if self.player_mode == PlayerMode::Spectator {
+            return Err(ah::format_err!("move_put: Player is spectator. Not allowed to move."));
+        }
+
         let (from_pos, token_id) = match self.moving {
             MoveState::NoMove =>
                 return Err(ah::format_err!("move_put: Not moving.")),
@@ -705,6 +765,7 @@ impl GameState {
             MoveState::Sheep(p) => (p, MSG_MOVE_TOKEN_SHEEP),
         };
 
+        // Try to put the token. This might fail.
         let result = match self.get_field_state(pos) {
             FieldState::Unused |
             FieldState::Wolf |
@@ -716,10 +777,12 @@ impl GameState {
                     ValidationResult::Invalid =>
                         Err(ah::format_err!("move_put: Invalid move.")),
                     ValidationResult::Valid => {
+                        self.move_put_send_client(pos, token_id)?;
                         self.do_move_put(pos);
                         Ok(())
                     },
                     ValidationResult::ValidBeat(beat_pos) => {
+                        self.move_put_send_client(pos, token_id)?;
                         self.beat(from_pos, pos, beat_pos);
                         self.do_move_put(pos);
                         Ok(())
@@ -727,22 +790,17 @@ impl GameState {
                 }
             },
         };
-
         self.i_am_moving = !result.is_ok();
-
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PUT,
-                                                   token_id,
-                                                   pos.x as u32,
-                                                   pos.y as u32) {
-                eprintln!("Failed to transmit move: {}", e);
-            }
-        }
         result
     }
 
     /// Abort a move operation.
     pub fn move_abort(&mut self) {
+        if self.player_mode == PlayerMode::Spectator {
+            eprintln!("move_abort: Player is spectator. Not allowed to move.");
+            return;
+        }
+
         match self.moving {
             MoveState::NoMove => {
                 self.i_am_moving = false;
@@ -757,7 +815,7 @@ impl GameState {
                                                            MSG_MOVE_TOKEN_CURRENT,
                                                            coord.x as u32,
                                                            coord.y as u32) {
-                        eprintln!("Failed to transmit move: {}", e);
+                        eprintln!("Move-abort failed on server: {}", e);
                     }
                 }
             },
