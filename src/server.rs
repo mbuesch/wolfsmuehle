@@ -46,11 +46,9 @@ use crate::protocol::{
     net_sync,
 };
 
-const SERVER_CONN_LIMIT: usize = 10;
-
 /// Server instance thread corresponding to one connected client.
-struct ServerInstance {
-    stream:         TcpStream,
+struct ServerInstance<'a> {
+    stream:         &'a mut TcpStream,
     peer_addr:      SocketAddr,
     rooms:          Arc<Mutex<Vec<ServerRoom>>>,
     joined_room:    Option<String>,
@@ -67,9 +65,9 @@ fn find_room<'a>(rooms: &'a mut MutexGuard<'_, Vec<ServerRoom>>,
     None
 }
 
-impl ServerInstance {
-    fn new(stream: TcpStream,
-           rooms: Arc<Mutex<Vec<ServerRoom>>>) -> ah::Result<ServerInstance> {
+impl<'a> ServerInstance<'a> {
+    fn new(stream: &'a mut TcpStream,
+           rooms: Arc<Mutex<Vec<ServerRoom>>>) -> ah::Result<ServerInstance<'a>> {
         let peer_addr = stream.peer_addr()?;
         stream.set_nodelay(true)?;
         Ok(ServerInstance {
@@ -266,7 +264,6 @@ impl ServerInstance {
                 },
                 Err(e) => {
                     eprintln!("Server thread error: {}", e);
-                    self.stream.shutdown(Shutdown::Both).ok();
                     break;
                 },
             }
@@ -303,15 +300,18 @@ impl ServerRoom {
 
 pub struct Server {
     listener:       TcpListener,
+    max_conns:      usize,
     active_conns:   Arc<AtomicUsize>,
     rooms:          Arc<Mutex<Vec<ServerRoom>>>
 }
 
 impl Server {
-    pub fn new(addr: impl ToSocketAddrs) -> ah::Result<Server> {
+    pub fn new(addr: impl ToSocketAddrs,
+               max_conns: u16) -> ah::Result<Server> {
         let listener = TcpListener::bind(addr)?;
         Ok(Server {
             listener,
+            max_conns:      max_conns as usize,
             active_conns:   Arc::new(AtomicUsize::new(0)),
             rooms:          Arc::new(Mutex::new(vec![])),
         })
@@ -330,14 +330,13 @@ impl Server {
 
         for stream in self.listener.incoming() {
             match stream {
-                Ok(stream) => {
-                    if self.active_conns.load(Ordering::Acquire) < SERVER_CONN_LIMIT {
-                        self.active_conns.fetch_add(1, Ordering::SeqCst);
+                Ok(mut stream) => {
+                    if self.active_conns.fetch_add(1, Ordering::Acquire) < self.max_conns {
 
                         let thread_rooms = Arc::clone(&self.rooms);
                         let thread_active_conns = Arc::clone(&self.active_conns);
                         thread::spawn(move || {
-                            match ServerInstance::new(stream, thread_rooms) {
+                            match ServerInstance::new(&mut stream, thread_rooms) {
                                 Ok(mut instance) => {
                                     instance.run_loop();
                                     println!("Server thread exiting.");
@@ -346,10 +345,12 @@ impl Server {
                                     eprintln!("Could not construct server instance: {}", e);
                                 },
                             };
-                            thread_active_conns.fetch_sub(1, Ordering::SeqCst);
+                            stream.shutdown(Shutdown::Both).ok();
+                            thread_active_conns.fetch_sub(1, Ordering::Release);
                         });
                     } else {
                         stream.shutdown(Shutdown::Both).ok();
+                        self.active_conns.fetch_sub(1, Ordering::Release);
                     }
                 },
                 Err(e) => {

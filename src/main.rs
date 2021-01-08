@@ -51,6 +51,11 @@ struct Opts {
     #[structopt(short, long)]
     server: Option<String>,
 
+    /// Maximum number of connections to accept in server mode.
+    #[cfg(feature="server")]
+    #[structopt(short, long, default_value="10")]
+    max_connections: u16,
+
     /// Server room to open/join.
     #[cfg(feature="server")]
     #[structopt(short="r", long)]
@@ -68,8 +73,9 @@ fn server_fn(opt: &Opts) -> ah::Result<()> {
     if addr == "default" {
         addr = "0.0.0.0:5596";
     }
+
     println!("Running dedicated server on {} ...", addr);
-    let mut s = Server::new(addr)?;
+    let mut s = Server::new(addr, opt.max_connections)?;
 
     let default_rooms = vec!["default".to_string()];
     let rooms = match opt.server_room.as_ref() {
