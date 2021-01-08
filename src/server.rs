@@ -33,7 +33,10 @@ use std::sync::{Mutex, MutexGuard, Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use crate::game_state::GameState;
-use crate::player::PlayerMode;
+use crate::player::{
+    PlayerMode,
+    num_to_player_mode,
+};
 use crate::protocol::{
     MSG_BUFFER_SIZE,
     MSG_RESULT_OK,
@@ -77,7 +80,7 @@ impl<'a> ServerInstance<'a> {
             peer_addr,
             rooms,
             joined_room: None,
-            player_mode: PlayerMode::Both,//TODO
+            player_mode: PlayerMode::Spectator,
         })
     }
 
@@ -144,6 +147,8 @@ impl<'a> ServerInstance<'a> {
                         let mut rooms = self.rooms.lock().unwrap();
                         self.joined_room = match find_room(&mut rooms, &room_name) {
                             Some(r) => {
+                                self.player_mode = num_to_player_mode(msg.get_player_mode())?;
+                                //TODO restrict player modes.
                                 self.stream.write(&MsgResult::new(msg, MSG_RESULT_OK)?.to_bytes())?;
                                 println!("{} joined '{}'", self.peer_addr, r.get_name());
                                 Some(r.get_name().to_string())
@@ -164,6 +169,7 @@ impl<'a> ServerInstance<'a> {
             },
             MsgType::MsgTypeLeave(msg) => {
                 self.joined_room = None;
+                self.player_mode = PlayerMode::Spectator;
                 self.stream.write(&MsgResult::new(msg, MSG_RESULT_OK)?.to_bytes())?;
                 println!("{} left", self.peer_addr);
             },

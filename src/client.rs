@@ -27,6 +27,10 @@ use std::net::{
     TcpStream,
     ToSocketAddrs,
 };
+use crate::player::{
+    PlayerMode,
+    player_mode_to_num,
+};
 use crate::protocol::{
     MSG_BUFFER_SIZE,
     Message,
@@ -128,8 +132,12 @@ impl Client {
         Ok(())
     }
 
-    pub fn send_join(&mut self, room_name: &str) -> ah::Result<()> {
-        send_wait_for_ok!(self, "join", MsgJoin::new(room_name)?);
+    pub fn send_join(&mut self,
+                     room_name: &str,
+                     player_mode: PlayerMode) -> ah::Result<()> {
+        send_wait_for_ok!(self, "join",
+                          MsgJoin::new(room_name,
+                                       player_mode_to_num(player_mode))?);
         Ok(())
     }
 

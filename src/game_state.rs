@@ -213,7 +213,9 @@ impl GameState {
         };
         game.reset_game(true);
         if let Some(connect_to_server) = connect_to_server {
-            game.connect(connect_to_server, room_name)?;
+            game.connect(connect_to_server,
+                         room_name,
+                         player_mode)?;
         }
         game.print_turn();
         Ok(game)
@@ -409,13 +411,14 @@ impl GameState {
     /// Connect to a game server.
     fn connect(&mut self,
                addr: String,
-               room_name: String) -> ah::Result<()> {
+               room_name: String,
+               player_mode: PlayerMode) -> ah::Result<()> {
         println!("Connecting to server {} ...", addr);
         let mut client = Client::new(addr)?;
         client.send_ping()?;
         client.send_nop()?;
         println!("Joining room '{}' ...", &room_name);
-        client.send_join(&room_name)?;
+        client.send_join(&room_name, player_mode)?;
         client.send_request_gamestate()?;
         self.fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
         self.client = Some(client);

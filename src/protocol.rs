@@ -355,15 +355,22 @@ impl Message for MsgResult {
 
 #[derive(Debug)]
 pub struct MsgJoin {
-    header:     MsgHeader,
-    room_name:  [u8; MSG_JOIN_MAXROOMNAME],
+    header:         MsgHeader,
+    room_name:      [u8; MSG_JOIN_MAXROOMNAME],
+    player_mode:    u32,
 }
 
 const MSG_JOIN_MAXROOMNAME: usize = 64;
-const MSG_JOIN_SIZE: u32 = MSG_HEADER_SIZE + MSG_JOIN_MAXROOMNAME as u32;
+const MSG_JOIN_SIZE: u32 = MSG_HEADER_SIZE + MSG_JOIN_MAXROOMNAME as u32 + (1 * 4);
+
+pub const MSG_JOIN_PLAYERMODE_SPECTATOR: u32    = 0;
+pub const MSG_JOIN_PLAYERMODE_WOLF: u32         = 1;
+pub const MSG_JOIN_PLAYERMODE_SHEEP: u32        = 2;
+pub const MSG_JOIN_PLAYERMODE_BOTH: u32         = 3;
 
 impl MsgJoin {
-    pub fn new(room_name: &str) -> ah::Result<MsgJoin> {
+    pub fn new(room_name:   &str,
+               player_mode: u32) -> ah::Result<MsgJoin> {
         let mut room_name_bytes = [0; MSG_JOIN_MAXROOMNAME];
         str2bytes(&mut room_name_bytes, room_name)?;
         Ok(MsgJoin {
@@ -371,6 +378,7 @@ impl MsgJoin {
                                        MSG_JOIN_SIZE,
                                        MSG_ID_JOIN),
             room_name:  room_name_bytes,
+            player_mode,
         })
     }
 
@@ -381,10 +389,13 @@ impl MsgJoin {
             let mut room_name = [0; MSG_JOIN_MAXROOMNAME];
             room_name.copy_from_slice(&data[offset..offset+MSG_JOIN_MAXROOMNAME]);
             offset += MSG_JOIN_MAXROOMNAME;
+            let player_mode = from_net(&data[offset..])?;
+            offset += 4;
 
             let msg_join = MsgJoin {
                 header,
                 room_name,
+                player_mode,
             };
             Ok((offset, Box::new(msg_join)))
         } else {
@@ -394,6 +405,10 @@ impl MsgJoin {
 
     pub fn get_room_name(&self) -> ah::Result<String> {
         bytes2string(&self.room_name)
+    }
+
+    pub fn get_player_mode(&self) -> u32 {
+        self.player_mode
     }
 }
 
@@ -406,6 +421,7 @@ impl Message for MsgJoin {
         let mut data = Vec::with_capacity(MSG_JOIN_SIZE as usize);
         self.header.to_bytes(&mut data);
         data.extend_from_slice(&self.room_name);
+        data.extend_from_slice(&to_net(self.player_mode));
         data
     }
 

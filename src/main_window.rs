@@ -384,7 +384,9 @@ impl MainWindow {
         mainwnd.set_application(Some(app));
         mainwnd.set_title("Wolfsmühle");
 
-        let game = Rc::new(RefCell::new(GameState::new(PlayerMode::Both,
+        let player_mode = PlayerMode::Both;
+        //TODO
+        let game = Rc::new(RefCell::new(GameState::new(player_mode,
                                                        connect_to_server,
                                                        room_name)?));
 

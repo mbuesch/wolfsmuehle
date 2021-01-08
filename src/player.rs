@@ -17,6 +17,42 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+use anyhow as ah;
+use crate::protocol::{
+    MSG_JOIN_PLAYERMODE_SPECTATOR,
+    MSG_JOIN_PLAYERMODE_WOLF,
+    MSG_JOIN_PLAYERMODE_SHEEP,
+    MSG_JOIN_PLAYERMODE_BOTH,
+};
+
+pub fn num_to_player_mode(player_mode: u32) -> ah::Result<PlayerMode> {
+    match player_mode {
+        MSG_JOIN_PLAYERMODE_SPECTATOR =>
+            Ok(PlayerMode::Spectator),
+        MSG_JOIN_PLAYERMODE_BOTH =>
+            Ok(PlayerMode::Both),
+        MSG_JOIN_PLAYERMODE_WOLF =>
+            Ok(PlayerMode::Wolf),
+        MSG_JOIN_PLAYERMODE_SHEEP =>
+            Ok(PlayerMode::Sheep),
+        _ =>
+            Err(ah::format_err!("Received invalid player_mode: {}", player_mode)),
+    }
+}
+
+pub const fn player_mode_to_num(player_mode: PlayerMode) -> u32 {
+    match player_mode {
+        PlayerMode::Spectator =>
+            MSG_JOIN_PLAYERMODE_SPECTATOR,
+        PlayerMode::Both =>
+            MSG_JOIN_PLAYERMODE_BOTH,
+        PlayerMode::Wolf =>
+            MSG_JOIN_PLAYERMODE_WOLF,
+        PlayerMode::Sheep =>
+            MSG_JOIN_PLAYERMODE_SHEEP,
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PlayerMode {
     /// Spectators can't manipulate the game state.
