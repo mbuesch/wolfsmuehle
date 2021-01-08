@@ -358,6 +358,7 @@ impl Server {
                         });
                     } else {
                         stream.shutdown(Shutdown::Both).ok();
+                        eprintln!("Rejected connection: Too many connections.");
                         self.active_conns.fetch_sub(1, Ordering::Release);
                     }
                 },
