@@ -48,9 +48,14 @@ use structopt::StructOpt;
 #[structopt(name="wolfsmühle")]
 struct Opts {
     /// Run a dedicated server.
-    #[cfg(feature="server")]
+    #[cfg(feature="gui")]
     #[structopt(short, long)]
-    server: Option<String>,
+    server: bool,
+
+    /// Bind the server to this address.
+    #[cfg(feature="server")]
+    #[structopt(short="b", long, default_value="0.0.0.0")]
+    server_bind: String,
 
     /// Maximum number of connections to accept in server mode.
     #[cfg(feature="server")]
@@ -58,28 +63,27 @@ struct Opts {
     max_connections: u16,
 
     /// Server room to open/join.
-    #[cfg(feature="server")]
-    #[structopt(short="r", long)]
-    server_room: Option<Vec<String>>,
+    #[structopt(short, long)]
+    room: Option<Vec<String>>,
 
     /// Connect to a server.
-    #[cfg(feature="server")]
     #[structopt(short, long)]
     connect: Option<String>,
+
+    /// Use this port for server or client connection.
+    #[structopt(short, long, default_value="5596")]
+    port: u16,
 }
 
 #[cfg(feature="server")]
 fn server_fn(opt: &Opts) -> ah::Result<()> {
-    let mut addr = &opt.server.as_ref().unwrap()[..];
-    if addr == "default" {
-        addr = "0.0.0.0:5596";
-    }
+    let addr = format!("{}:{}", opt.server_bind, opt.port);
 
     println!("Running dedicated server on {} ...", addr);
     let mut s = Server::new(addr, opt.max_connections)?;
 
     let default_rooms = vec!["default".to_string()];
-    let rooms = match opt.server_room.as_ref() {
+    let rooms = match opt.room.as_ref() {
         Some(r) => r,
         None => {
             println!("No server rooms specified. Using '{}'.", default_rooms[0]);
@@ -96,12 +100,12 @@ fn app_fn(app: &gtk::Application) {
     let opt = Opts::from_args();
 
     let connect = match opt.connect {
-        Some(connect) => Some(connect.to_string()),
+        Some(connect) => Some(format!("{}:{}", connect, opt.port)),
         None => None,
     };
 
     let default_room = "default".to_string();
-    let room_name = match opt.server_room {
+    let room_name = match opt.room {
         Some(rooms) => {
             if rooms.len() >= 1 {
                 rooms[0].to_string()
@@ -121,14 +125,19 @@ fn app_fn(app: &gtk::Application) {
 fn main() -> ah::Result<()> {
     let opt = Opts::from_args();
 
+    #[cfg(feature="gui")]
+    let run_server = opt.server;
+    #[cfg(not(feature="gui"))]
+    let run_server = true;
+
     #[cfg(feature="server")]
-    if opt.server.is_some() {
+    if run_server {
         server_fn(&opt)?;
         return Ok(());
     }
 
     #[cfg(feature="gui")]
-    if opt.server.is_none() {
+    if !run_server {
         let app = gtk::Application::new(None, gio::ApplicationFlags::FLAGS_NONE)?;
         app.connect_activate(app_fn);
         //let args: Vec<_> = env::args().collect();
