@@ -25,11 +25,9 @@ use drawing_area::DrawingArea;
 
 use anyhow as ah;
 use crate::game_state::GameState;
+use crate::gtk_helpers::*;
 use crate::player::PlayerMode;
 use expect_exit::exit_unwind;
-use glib;
-use gtk::prelude::*;
-use gtk;
 use std::cell::RefCell;
 use std::rc::Rc;
 

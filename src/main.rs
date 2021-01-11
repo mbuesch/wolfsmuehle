@@ -22,6 +22,7 @@ mod board;
 mod client;
 mod coord;
 mod game_state;
+mod gtk_helpers;
 #[cfg(feature="gui")]
 mod main_window;
 mod player;

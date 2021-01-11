@@ -32,25 +32,14 @@ use crate::game_state::{
     MoveState,
     WinState,
 };
-use gdk;
-use gio::prelude::*;
-use glib;
-use gtk::prelude::*;
-use gtk;
+use crate::gsigparam;
+use crate::gtk_helpers::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 const XOFFS: f64    = 25.0;
 const YOFFS: f64    = 25.0;
 const POSDIST: f64  = 100.0;
-
-macro_rules! gsigparam {
-    ($param:expr, $type:ty) => {
-        $param.get::<$type>().unwrap().unwrap()
-    }
-}
-
-type GSigHandler = Box<dyn Fn(&[glib::Value]) -> Option<glib::Value> + 'static>;
 
 /// Convert board coordinates to pixel coodrinates.
 fn pos2pix(coord: &Coord) -> (f64, f64) {
