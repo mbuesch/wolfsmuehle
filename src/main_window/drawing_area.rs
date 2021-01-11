@@ -44,11 +44,13 @@ const XOFFS: f64    = 25.0;
 const YOFFS: f64    = 25.0;
 const POSDIST: f64  = 100.0;
 
-macro_rules! sigparam {
+macro_rules! gsigparam {
     ($param:expr, $type:ty) => {
         $param.get::<$type>().unwrap().unwrap()
     }
 }
+
+type GSigHandler = Box<dyn Fn(&[glib::Value]) -> Option<glib::Value> + 'static>;
 
 /// Convert board coordinates to pixel coodrinates.
 fn pos2pix(coord: &Coord) -> (f64, f64) {
@@ -324,41 +326,58 @@ impl DrawingArea {
         self.redraw();
     }
 
-    pub fn gsignal_draw(&self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _widget = sigparam!(param[0], gtk::DrawingArea);
-        let cairo = sigparam!(param[1], cairo::Context);
+    fn gsignal_draw(&self, param: &[glib::Value]) -> Option<glib::Value> {
+        let _widget = gsigparam!(param[0], gtk::DrawingArea);
+        let cairo = gsigparam!(param[1], cairo::Context);
         self.draw(cairo);
         Some(false.to_value())
     }
 
-    pub fn gsignal_motionnotify(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _widget = sigparam!(param[0], gtk::DrawingArea);
-        let event = sigparam!(param[1], gdk::Event);
+    fn gsignal_motionnotify(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        let _widget = gsigparam!(param[0], gtk::DrawingArea);
+        let event = gsigparam!(param[1], gdk::Event);
         let (x, y) = event.get_coords().unwrap();
         self.mousemove(x, y);
         Some(false.to_value())
     }
 
-    pub fn gsignal_buttonpress(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _widget = sigparam!(param[0], gtk::DrawingArea);
-        let event = sigparam!(param[1], gdk::Event);
+    fn gsignal_buttonpress(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        let _widget = gsigparam!(param[0], gtk::DrawingArea);
+        let event = gsigparam!(param[1], gdk::Event);
         let (x, y) = event.get_coords().unwrap();
         self.mousebutton(x, y, event.get_button().unwrap(), true);
         Some(false.to_value())
     }
 
-    pub fn gsignal_buttonrelease(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _widget = sigparam!(param[0], gtk::DrawingArea);
-        let event = sigparam!(param[1], gdk::Event);
+    fn gsignal_buttonrelease(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        let _widget = gsigparam!(param[0], gtk::DrawingArea);
+        let event = gsigparam!(param[1], gdk::Event);
         let (x, y) = event.get_coords().unwrap();
         self.mousebutton(x, y, event.get_button().unwrap(), false);
         Some(false.to_value())
     }
 
-    pub fn gsignal_newgame(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = sigparam!(param[0], gtk::MenuItem);
+    fn gsignal_newgame(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
         self.reset_game();
         None
+    }
+
+    pub fn connect_signals(draw: Rc<RefCell<DrawingArea>>,
+                           handler_name: &str) -> Option<GSigHandler> {
+        match handler_name {
+            "handler_drawingarea_draw" =>
+                Some(Box::new(move |p| draw.borrow().gsignal_draw(p))),
+            "handler_drawingarea_motionnotify" =>
+                Some(Box::new(move |p| draw.borrow_mut().gsignal_motionnotify(p))),
+            "handler_drawingarea_buttonpress" =>
+                Some(Box::new(move |p| draw.borrow_mut().gsignal_buttonpress(p))),
+            "handler_drawingarea_buttonrelease" =>
+                Some(Box::new(move |p| draw.borrow_mut().gsignal_buttonrelease(p))),
+            "handler_newgame" =>
+                Some(Box::new(move |p| draw.borrow_mut().gsignal_newgame(p))),
+            _ => None,
+        }
     }
 }
 

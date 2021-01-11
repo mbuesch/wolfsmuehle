@@ -54,34 +54,36 @@ const ABOUT_TEXT: &str =
 
 pub struct MainWindow {
     mainwnd:    gtk::ApplicationWindow,
-    //draw:       Rc<RefCell<DrawingArea>>,
-    //game:       Rc<RefCell<GameState>>,
 }
 
 impl MainWindow {
     pub fn new(app:               &gtk::Application,
                connect_to_server: Option<String>,
                room_name:         String) -> ah::Result<MainWindow> {
+        // Create main window.
         let glade_source = include_str!("main_window.glade");
         let builder = gtk::Builder::from_string(glade_source);
-
         let mainwnd: gtk::ApplicationWindow = builder.get_object("mainwindow").unwrap();
         mainwnd.set_application(Some(app));
         mainwnd.set_title("Wolfsmühle");
 
-        let player_tree: gtk::TreeView = builder.get_object("player_tree").unwrap();
-        let player_list = PlayerList::new(player_tree);
-
+        // Create game state.
         let player_mode = PlayerMode::Both;
         //TODO
         let game = Rc::new(RefCell::new(GameState::new(player_mode,
                                                        connect_to_server,
                                                        room_name)?));
 
+        // Create player state area.
+        let player_tree: gtk::TreeView = builder.get_object("player_tree").unwrap();
+        let player_list = PlayerList::new(player_tree);
+
+        // Create drawing area.
         let draw = Rc::new(RefCell::new(DrawingArea::new(
             builder.get_object("drawing_area").unwrap(),
             Rc::clone(&game))));
 
+        // Create game polling timer.
         let game2 = Rc::clone(&game);
         let draw2 = Rc::clone(&draw);
         glib::timeout_add_local(100, move || {
@@ -91,22 +93,16 @@ impl MainWindow {
             glib::Continue(true)
         });
 
+        // Connect signals.
         let draw2 = Rc::clone(&draw);
         let mainwnd2 = mainwnd.clone();
         builder.connect_signals(move |_builder, handler_name| {
             let mainwnd2 = mainwnd2.clone();
-            let draw2 = Rc::clone(&draw2);
+            match DrawingArea::connect_signals(Rc::clone(&draw2), handler_name) {
+                Some(handler) => return handler,
+                None => (),
+            }
             match handler_name {
-                "handler_drawingarea_draw" =>
-                    Box::new(move |p| draw2.borrow().gsignal_draw(p)),
-                "handler_drawingarea_motionnotify" =>
-                    Box::new(move |p| draw2.borrow_mut().gsignal_motionnotify(p)),
-                "handler_drawingarea_buttonpress" =>
-                    Box::new(move |p| draw2.borrow_mut().gsignal_buttonpress(p)),
-                "handler_drawingarea_buttonrelease" =>
-                    Box::new(move |p| draw2.borrow_mut().gsignal_buttonrelease(p)),
-                "handler_newgame" =>
-                    Box::new(move |p| draw2.borrow_mut().gsignal_newgame(p)),
                 "handler_about" => {
                     Box::new(move |_p| {
                         let msg = gtk::MessageDialog::new(Some(&mainwnd2),
@@ -128,8 +124,6 @@ impl MainWindow {
 
         Ok(MainWindow {
             mainwnd,
-            //draw,
-            //game,
         })
     }
 
