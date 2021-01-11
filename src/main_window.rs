@@ -85,9 +85,7 @@ impl MainWindow {
         let game2 = Rc::clone(&game);
         let draw2 = Rc::clone(&draw);
         glib::timeout_add_local(100, move || {
-            if game2.borrow_mut().poll_server() {
-                draw2.borrow().redraw();
-            }
+            MainWindow::poll_timer(&draw2.borrow(), &mut game2.borrow_mut());
             glib::Continue(true)
         });
 
@@ -123,6 +121,13 @@ impl MainWindow {
         Ok(MainWindow {
             mainwnd,
         })
+    }
+
+    fn poll_timer(draw: &DrawingArea,
+                  game: &mut GameState) {
+        if game.poll_server() {
+            draw.redraw();
+        }
     }
 
     pub fn main_window(self) -> gtk::ApplicationWindow {
