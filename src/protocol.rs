@@ -24,7 +24,7 @@ use crate::board::{
 };
 use std::convert::TryInto;
 
-pub const MSG_BUFFER_SIZE: usize    = 0x100;
+pub const MSG_BUFFER_SIZE: usize    = 0x1000;
 
 const MSG_MAGIC: u32                = 0xAA0E1F37;
 
@@ -86,9 +86,7 @@ pub enum MsgType<'a> {
 
 pub trait Message {
     fn get_id(&self) -> u32;
-
     fn to_bytes(&self) -> Vec<u8>;
-
     fn get_message(&self) -> MsgType;
 }
 
@@ -156,7 +154,7 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
 
     let header = MsgHeader::new(magic, size, id);
 
-    let (sub_size, message) = match id {
+    let (_sub_size, message) = match id {
         MSG_ID_NOP =>
             MsgNop::from_bytes(header, &data[offset..])?,
         MSG_ID_RESULT =>
@@ -181,7 +179,7 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
             return Err(ah::format_err!("from_bytes: Unknown ID ({}).", id)),
     };
 
-    Ok((offset + sub_size, Some(message)))
+    Ok((size as usize, Some(message)))
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -251,6 +249,7 @@ macro_rules! define_trivial_message {
             fn to_bytes(&self) -> Vec<u8> {
                 let mut data = Vec::with_capacity(MSG_HEADER_SIZE as usize);
                 self.header.to_bytes(&mut data);
+                assert_eq!(data.len(), MSG_HEADER_SIZE as usize);
                 data
             }
 
@@ -307,12 +306,13 @@ impl MsgResult {
             let result_code = from_net(&data[offset..])?;
             offset += 4;
 
-            let msg_result = MsgResult {
+            let msg = MsgResult {
                 header,
                 in_reply_to_id,
                 result_code
             };
-            Ok((offset, Box::new(msg_result)))
+            assert_eq!(offset, (MSG_RESULT_SIZE - MSG_HEADER_SIZE) as usize);
+            Ok((offset, Box::new(msg)))
         } else {
             Err(ah::format_err!("MsgResult: Not enough data."))
         }
@@ -341,6 +341,7 @@ impl Message for MsgResult {
         self.header.to_bytes(&mut data);
         data.extend_from_slice(&to_net(self.in_reply_to_id));
         data.extend_from_slice(&to_net(self.result_code));
+        assert_eq!(data.len(), MSG_RESULT_SIZE as usize);
         data
     }
 
@@ -357,11 +358,16 @@ impl Message for MsgResult {
 pub struct MsgJoin {
     header:         MsgHeader,
     room_name:      [u8; MSG_JOIN_MAXROOMNAME],
+    player_name:    [u8; MSG_JOIN_MAXPLAYERNAME],
     player_mode:    u32,
 }
 
 const MSG_JOIN_MAXROOMNAME: usize = 64;
-const MSG_JOIN_SIZE: u32 = MSG_HEADER_SIZE + MSG_JOIN_MAXROOMNAME as u32 + (1 * 4);
+const MSG_JOIN_MAXPLAYERNAME: usize = 64;
+const MSG_JOIN_SIZE: u32 = MSG_HEADER_SIZE +
+                           MSG_JOIN_MAXROOMNAME as u32 +
+                           MSG_JOIN_MAXPLAYERNAME as u32 +
+                           (1 * 4);
 
 pub const MSG_JOIN_PLAYERMODE_SPECTATOR: u32    = 0;
 pub const MSG_JOIN_PLAYERMODE_WOLF: u32         = 1;
@@ -370,14 +376,18 @@ pub const MSG_JOIN_PLAYERMODE_BOTH: u32         = 3;
 
 impl MsgJoin {
     pub fn new(room_name:   &str,
+               player_name: &str,
                player_mode: u32) -> ah::Result<MsgJoin> {
         let mut room_name_bytes = [0; MSG_JOIN_MAXROOMNAME];
         str2bytes(&mut room_name_bytes, room_name)?;
+        let mut player_name_bytes = [0; MSG_JOIN_MAXPLAYERNAME];
+        str2bytes(&mut player_name_bytes, player_name)?;
         Ok(MsgJoin {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_JOIN_SIZE,
                                        MSG_ID_JOIN),
-            room_name:  room_name_bytes,
+            room_name:      room_name_bytes,
+            player_name:    player_name_bytes,
             player_mode,
         })
     }
@@ -389,15 +399,20 @@ impl MsgJoin {
             let mut room_name = [0; MSG_JOIN_MAXROOMNAME];
             room_name.copy_from_slice(&data[offset..offset+MSG_JOIN_MAXROOMNAME]);
             offset += MSG_JOIN_MAXROOMNAME;
+            let mut player_name = [0; MSG_JOIN_MAXPLAYERNAME];
+            player_name.copy_from_slice(&data[offset..offset+MSG_JOIN_MAXPLAYERNAME]);
+            offset += MSG_JOIN_MAXPLAYERNAME;
             let player_mode = from_net(&data[offset..])?;
             offset += 4;
 
-            let msg_join = MsgJoin {
+            let msg = MsgJoin {
                 header,
                 room_name,
+                player_name,
                 player_mode,
             };
-            Ok((offset, Box::new(msg_join)))
+            assert_eq!(offset, (MSG_JOIN_SIZE - MSG_HEADER_SIZE) as usize);
+            Ok((offset, Box::new(msg)))
         } else {
             Err(ah::format_err!("MsgJoin: Not enough data."))
         }
@@ -405,6 +420,10 @@ impl MsgJoin {
 
     pub fn get_room_name(&self) -> ah::Result<String> {
         bytes2string(&self.room_name)
+    }
+
+    pub fn get_player_name(&self) -> ah::Result<String> {
+        bytes2string(&self.player_name)
     }
 
     pub fn get_player_mode(&self) -> u32 {
@@ -421,7 +440,9 @@ impl Message for MsgJoin {
         let mut data = Vec::with_capacity(MSG_JOIN_SIZE as usize);
         self.header.to_bytes(&mut data);
         data.extend_from_slice(&self.room_name);
+        data.extend_from_slice(&self.player_name);
         data.extend_from_slice(&to_net(self.player_mode));
+        assert_eq!(data.len(), MSG_JOIN_SIZE as usize);
         data
     }
 
@@ -488,14 +509,16 @@ impl MsgGameState {
             let turn = from_net(&data[offset..])?;
             offset += 4;
 
-            Ok((offset, Box::new(MsgGameState {
-                                 header,
-                                 fields,
-                                 moving_state,
-                                 moving_x,
-                                 moving_y,
-                                 turn, })
-            ))
+            let msg = MsgGameState {
+                header,
+                fields,
+                moving_state,
+                moving_x,
+                moving_y,
+                turn,
+            };
+            assert_eq!(offset, (MSG_GAME_STATE_SIZE - MSG_HEADER_SIZE) as usize);
+            Ok((offset, Box::new(msg)))
         } else {
             Err(ah::format_err!("MsgGameState: Not enough data."))
         }
@@ -531,6 +554,7 @@ impl Message for MsgGameState {
         data.extend_from_slice(&to_net(self.moving_x));
         data.extend_from_slice(&to_net(self.moving_y));
         data.extend_from_slice(&to_net(self.turn));
+        assert_eq!(data.len(), MSG_GAME_STATE_SIZE as usize);
         data
     }
 
@@ -592,14 +616,15 @@ impl MsgMove {
             let coord_y = from_net(&data[offset..])?;
             offset += 4;
 
-            let msg_result = MsgMove {
+            let msg = MsgMove {
                 header,
                 action,
                 token,
                 coord_x,
                 coord_y,
             };
-            Ok((offset, Box::new(msg_result)))
+            assert_eq!(offset, (MSG_MOVE_SIZE - MSG_HEADER_SIZE) as usize);
+            Ok((offset, Box::new(msg)))
         } else {
             Err(ah::format_err!("MsgMove: Not enough data."))
         }
@@ -622,6 +647,7 @@ impl Message for MsgMove {
         data.extend_from_slice(&to_net(self.token));
         data.extend_from_slice(&to_net(self.coord_x));
         data.extend_from_slice(&to_net(self.coord_y));
+        assert_eq!(data.len(), MSG_MOVE_SIZE as usize);
         data
     }
 

@@ -18,7 +18,7 @@
 //
 
 mod player_list;
-use player_list::PlayerList;
+use player_list::PlayerListView;
 
 mod drawing_area;
 use drawing_area::DrawingArea;
@@ -69,12 +69,14 @@ impl MainWindow {
         let player_mode = PlayerMode::Both;
         //TODO
         let game = Rc::new(RefCell::new(GameState::new(player_mode,
+                                                       Some("Player".to_string()),
                                                        connect_to_server,
                                                        room_name)?));
 
         // Create player state area.
         let player_tree: gtk::TreeView = builder.get_object("player_tree").unwrap();
-        let player_list = PlayerList::new(player_tree);
+        let player_list_view = Rc::new(RefCell::new(
+            PlayerListView::new(player_tree)));
 
         // Create drawing area.
         let draw = Rc::new(RefCell::new(DrawingArea::new(
@@ -84,8 +86,11 @@ impl MainWindow {
         // Create game polling timer.
         let game2 = Rc::clone(&game);
         let draw2 = Rc::clone(&draw);
+        let player_list_view2 = Rc::clone(&player_list_view);
         glib::timeout_add_local(100, move || {
-            MainWindow::poll_timer(&draw2.borrow(), &mut game2.borrow_mut());
+            MainWindow::poll_timer(&draw2.borrow(),
+                                   &mut game2.borrow_mut(),
+                                   &mut player_list_view2.borrow_mut());
             glib::Continue(true)
         });
 
@@ -124,8 +129,11 @@ impl MainWindow {
     }
 
     fn poll_timer(draw: &DrawingArea,
-                  game: &mut GameState) {
-        if game.poll_server() {
+                  game: &mut GameState,
+                  player_list_view: &mut PlayerListView) {
+        let redraw = game.poll_server();
+        player_list_view.update(game.get_room_player_list());
+        if redraw {
             draw.redraw();
         }
     }

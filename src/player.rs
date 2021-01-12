@@ -24,6 +24,7 @@ use crate::protocol::{
     MSG_JOIN_PLAYERMODE_SHEEP,
     MSG_JOIN_PLAYERMODE_BOTH,
 };
+use std::fmt;
 
 pub fn num_to_player_mode(player_mode: u32) -> ah::Result<PlayerMode> {
     match player_mode {
@@ -63,6 +64,49 @@ pub enum PlayerMode {
     Wolf,
     /// Player can manipulate sheep.
     Sheep,
+}
+
+impl fmt::Display for PlayerMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            PlayerMode::Spectator => "Spectator",
+            PlayerMode::Both => "Wolf and sheep",
+            PlayerMode::Wolf => "Wolf",
+            PlayerMode::Sheep => "Sheep",
+        })
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Player {
+    pub name:       String,
+    pub mode:       PlayerMode,
+    pub is_self:    bool,
+}
+
+impl Player {
+    pub fn new(name: String,
+               mode: PlayerMode,
+               is_self: bool) -> Player {
+        Player {
+            name,
+            mode,
+            is_self,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct PlayerList {
+    pub players:    Vec<Player>,
+}
+
+impl PlayerList {
+    pub fn new(players: Vec<Player>) -> PlayerList {
+        PlayerList {
+            players,
+        }
+    }
 }
 
 // vim: ts=4 sw=4 expandtab

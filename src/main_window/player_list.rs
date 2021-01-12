@@ -18,27 +18,51 @@
 //
 
 use crate::gtk_helpers::*;
+use crate::player::PlayerList;
 
-pub struct PlayerList {
+pub struct PlayerListView {
     tree_view:      gtk::TreeView,
+    model:          gtk::ListStore,
+    displayed_list: PlayerList,
 }
 
-impl PlayerList {
-    pub fn new(tree_view: gtk::TreeView) -> PlayerList {
-        let column = gtk::TreeViewColumn::new();
-        let cell = gtk::CellRendererText::new();
-        column.pack_start(&cell, true);
-        column.add_attribute(&cell, "text", 0);
-        tree_view.append_column(&column);
-        //TODO
-        let model = gtk::ListStore::new(&[String::static_type()]);
-        for entry in &["player 0", "player 1"] {
-            model.insert_with_values(None, &[0], &[&entry]);
+impl PlayerListView {
+    pub fn new(tree_view: gtk::TreeView) -> PlayerListView {
+        for i in 0..3 {
+            let column = gtk::TreeViewColumn::new();
+            let cell = gtk::CellRendererText::new();
+            column.pack_start(&cell, true);
+            column.add_attribute(&cell, "text", i);
+            column.set_title(["Player name",
+                              "Player type",
+                              ""][i as usize]);
+            tree_view.append_column(&column);
         }
+        let model = gtk::ListStore::new(&[String::static_type(),
+                                          String::static_type(),
+                                          String::static_type()]);
         tree_view.set_model(Some(&model));
 
-        PlayerList {
+        PlayerListView {
             tree_view,
+            model,
+            displayed_list: PlayerList::new(vec![]),
+        }
+    }
+
+    pub fn update(&mut self, player_list: &PlayerList) {
+        if *player_list != self.displayed_list {
+            self.model.clear();
+            for player in &player_list.players {
+                self.model.insert_with_values(
+                    None,
+                    &[0, 1, 2],
+                    &[&player.name,
+                      &format!("{}", player.mode),
+                      &format!("{}", if player.is_self { "*" } else { "" })]
+                );
+            }
+            self.displayed_list = player_list.clone();
         }
     }
 }

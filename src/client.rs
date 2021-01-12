@@ -134,9 +134,11 @@ impl Client {
 
     pub fn send_join(&mut self,
                      room_name: &str,
+                     player_name: &str,
                      player_mode: PlayerMode) -> ah::Result<()> {
         send_wait_for_ok!(self, "join",
                           MsgJoin::new(room_name,
+                                       player_name,
                                        player_mode_to_num(player_mode))?);
         Ok(())
     }
