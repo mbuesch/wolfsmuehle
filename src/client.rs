@@ -47,11 +47,14 @@ use crate::protocol::{
     net_sync,
 };
 use std::time::Instant;
+use libc::{EAGAIN, EWOULDBLOCK};
+
+const DEBUG_RAW: bool = false;
 
 macro_rules! send_wait_for_ok {
     ($self:expr, $name:literal, $msg:expr) => {
         let msg = $msg;
-        $self.stream.write(&msg.to_bytes())?;
+        $self.send(&msg.to_bytes())?;
         $self.wait_for_reply($name,
             |m| {
                 match m.get_message() {
@@ -92,6 +95,14 @@ impl Client {
         })
     }
 
+    fn send(&mut self, data: &[u8]) -> ah::Result<()> {
+        if DEBUG_RAW {
+            println!("Client TX: {:?}", data);
+        }
+        self.stream.write(data)?;
+        Ok(())
+    }
+
     fn wait_for_reply<F>(&mut self, name: &str, check_match: F) -> ah::Result<()>
         where F: Fn(Box<dyn Message>) -> Option<ah::Result<()>>
     {
@@ -114,13 +125,13 @@ impl Client {
 
     /// Send a NOP message to the server.
     pub fn send_nop(&mut self) -> ah::Result<()> {
-        self.stream.write(&MsgNop::new().to_bytes())?;
+        self.send(&MsgNop::new().to_bytes())?;
         Ok(())
     }
 
     /// Send a ping message to the server and wait for the pong response.
     pub fn send_ping(&mut self) -> ah::Result<()> {
-        self.stream.write(&MsgPing::new().to_bytes())?;
+        self.send(&MsgPing::new().to_bytes())?;
         self.wait_for_reply("ping",
             |m| {
                 match m.get_message() {
@@ -154,7 +165,7 @@ impl Client {
     }
 
     pub fn send_request_gamestate(&mut self) -> ah::Result<()> {
-        self.stream.write(&MsgReqGameState::new().to_bytes())?;
+        self.send(&MsgReqGameState::new().to_bytes())?;
         Ok(())
     }
 
@@ -181,10 +192,24 @@ impl Client {
         };
 
         match self.stream.read(&mut buffer[offset..]) {
-            Ok(0) | Err(_) =>
-                return None,
-            Ok(len) =>
-                buffer.truncate(offset + len),
+            Ok(len) => {
+                buffer.truncate(offset + len);
+                if DEBUG_RAW {
+                    println!("Client RX: {:?}", buffer);
+                }
+            },
+            Err(e) => {
+                let err_code = if let Some(err_code) = e.raw_os_error() {
+                    err_code
+                } else {
+                    -1
+                };
+                if err_code != EAGAIN &&
+                   err_code != EWOULDBLOCK {
+                    eprintln!("Receive error: {}", e);
+                }
+                buffer.truncate(offset);
+            },
         }
 
         if !self.sync {
