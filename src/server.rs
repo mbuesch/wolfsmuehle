@@ -126,9 +126,9 @@ impl<'a> ServerInstance<'a> {
                 self.send(&game_state.to_bytes())?;
             },
             MsgType::MsgTypeGameState(msg) => {
-                //TODO
                 drop(rooms);
-                self.send(&MsgResult::new(*msg, MSG_RESULT_OK, "")?.to_bytes())?;
+                self.send(&MsgResult::new(*msg, MSG_RESULT_NOK,
+                                          "MsgGameState not supported.")?.to_bytes())?;
             },
             MsgType::MsgTypeMove(msg) => {
                 match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
