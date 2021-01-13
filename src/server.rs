@@ -60,6 +60,7 @@ struct ServerInstance<'a> {
     peer_addr:      SocketAddr,
     rooms:          Arc<Mutex<Vec<ServerRoom>>>,
     joined_room:    Option<String>,
+    player_name:    Option<String>,
     player_mode:    PlayerMode,
 }
 
@@ -84,6 +85,7 @@ impl<'a> ServerInstance<'a> {
             peer_addr,
             rooms,
             joined_room: None,
+            player_name: None,
             player_mode: PlayerMode::Spectator,
         })
     }
@@ -116,7 +118,7 @@ impl<'a> ServerInstance<'a> {
             MsgType::MsgTypeReset(msg) => {
                 room.get_game_state(self.player_mode).reset_game(false);
                 drop(rooms);
-                self.send(&MsgResult::new(*msg, MSG_RESULT_OK)?.to_bytes())?;
+                self.send(&MsgResult::new(*msg, MSG_RESULT_OK, "")?.to_bytes())?;
             },
             MsgType::MsgTypeReqGameState(_msg) => {
                 let game_state = room.get_game_state(self.player_mode).make_state_message();
@@ -126,18 +128,19 @@ impl<'a> ServerInstance<'a> {
             MsgType::MsgTypeGameState(msg) => {
                 //TODO
                 drop(rooms);
-                self.send(&MsgResult::new(*msg, MSG_RESULT_OK)?.to_bytes())?;
+                self.send(&MsgResult::new(*msg, MSG_RESULT_OK, "")?.to_bytes())?;
             },
             MsgType::MsgTypeMove(msg) => {
                 match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
                     Ok(_) => {
                         drop(rooms);
-                        self.send(&MsgResult::new(*msg, MSG_RESULT_OK)?.to_bytes())?;
+                        self.send(&MsgResult::new(*msg, MSG_RESULT_OK, "")?.to_bytes())?;
                     },
                     Err(e) => {
                         drop(rooms);
-                        self.send(&MsgResult::new(*msg, MSG_RESULT_NOK)?.to_bytes())?;
-                        return Err(ah::format_err!("token move error: {}", e));
+                        let text = format!("token move error: {}", e);
+                        self.send(&MsgResult::new(*msg, MSG_RESULT_NOK, &text)?.to_bytes())?;
+                        return Err(ah::format_err!("{}", text));
                     },
                 }
             },
@@ -146,6 +149,51 @@ impl<'a> ServerInstance<'a> {
             }
         }
         Ok(())
+    }
+
+    fn do_join(&mut self,
+               room_name: &str,
+               player_name: &str,
+               player_mode: PlayerMode) -> ah::Result<()> {
+        let mut rooms = self.rooms.lock().unwrap();
+        match find_room(&mut rooms, &room_name) {
+            Some(room) => {
+                match room.add_player(player_name, player_mode) {
+                    Ok(_) => {
+                        self.player_mode = player_mode;
+                        self.player_name = Some(player_name.to_string());
+                        self.joined_room = Some(room.get_name().to_string());
+                        println!("{} joined '{}'", self.peer_addr, room.get_name());
+                    },
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            }
+            None => {
+                return Err(ah::format_err!("join: Room '{}' not found.",
+                                           room_name));
+            },
+        }
+        Ok(())
+    }
+
+    fn do_leave(&mut self) {
+        if let Some(player_name) = self.player_name.take() {
+            if let Some(room_name) = self.joined_room.take() {
+                let mut rooms = self.rooms.lock().unwrap();
+                match find_room(&mut rooms, &room_name) {
+                    Some(room) => room.remove_player(&player_name),
+                    None => (),
+                }
+                println!("{} / '{}' / '{}' has left the room '{}'",
+                         self.peer_addr,
+                         player_name,
+                         self.player_mode,
+                         room_name);
+            }
+            self.player_mode = PlayerMode::Spectator;
+        }
     }
 
     /// Handle received message.
@@ -160,44 +208,40 @@ impl<'a> ServerInstance<'a> {
                 self.send(&MsgPong::new().to_bytes())?;
             },
             MsgType::MsgTypeJoin(msg) => {
-                let mut result = Ok(());
+                let result;
                 if self.joined_room.is_none() {
                     if let Ok(room_name) = msg.get_room_name() {
-                        let mut rooms = self.rooms.lock().unwrap();
-                        match find_room(&mut rooms, &room_name) {
-                            Some(room) => {
-                                self.player_mode = num_to_player_mode(msg.get_player_mode())?;
-                                //TODO restrict player modes.
-                                self.joined_room = Some(room.get_name().to_string());
-                                println!("{} joined '{}'",
-                                         self.peer_addr, room.get_name());
+                        if let Ok(player_name) = msg.get_player_name() {
+                            if let Ok(player_mode) = num_to_player_mode(msg.get_player_mode()) {
+                                result = self.do_join(&room_name,
+                                                      &player_name,
+                                                      player_mode);
+                            } else {
+                                result = Err(ah::format_err!("Received invalid player mode."));
                             }
-                            None => {
-                                result = Err(ah::format_err!("join: Room '{}' not found.",
-                                                             room_name));
-                            },
+                        } else {
+                            result = Err(ah::format_err!("Received invalid player name."));
                         }
                     } else {
-                        result = Err(ah::format_err!("join: Received invalid room name."));
+                        result = Err(ah::format_err!("Received invalid room name."));
                     }
                 } else {
-                    result = Err(ah::format_err!("join: Already in room."));
+                    result = Err(ah::format_err!("Already in room."));
                 }
                 match result {
                     Ok(_) => {
-                        self.send(&MsgResult::new(msg, MSG_RESULT_OK)?.to_bytes())?;
+                        self.send(&MsgResult::new(msg, MSG_RESULT_OK, "")?.to_bytes())?;
                     },
                     Err(e) => {
-                        self.send(&MsgResult::new(msg, MSG_RESULT_NOK)?.to_bytes())?;
-                        return Err(e);
+                        let text = format!("Join failed: {}", e);
+                        self.send(&MsgResult::new(msg, MSG_RESULT_NOK, &text)?.to_bytes())?;
+                        return Err(ah::format_err!("{}", text));
                     },
                 }
             },
             MsgType::MsgTypeLeave(msg) => {
-                self.joined_room = None;
-                self.player_mode = PlayerMode::Spectator;
-                self.send(&MsgResult::new(msg, MSG_RESULT_OK)?.to_bytes())?;
-                println!("{} left", self.peer_addr);
+                self.do_leave();
+                self.send(&MsgResult::new(msg, MSG_RESULT_OK, "")?.to_bytes())?;
             },
             MsgType::MsgTypeReset(_) |
             MsgType::MsgTypeReqGameState(_) |
@@ -306,6 +350,7 @@ impl<'a> ServerInstance<'a> {
                 },
             }
         }
+        self.do_leave();
     }
 }
 
@@ -317,14 +362,16 @@ struct ServerRoom {
 
 impl ServerRoom {
     fn new(name: String) -> ah::Result<ServerRoom> {
-        let game_state = GameState::new(PlayerMode::Both,
-                                        None, /* no player name */
-                                        None, /* no connect */
-                                        name.to_string())?;
+        let mut game_state = GameState::new(PlayerMode::Both,
+                                            None, /* no player name */
+                                            None, /* no connect */
+                                            name.to_string())?;
+        let player_list = PlayerList::new(vec![]);
+        game_state.set_room_player_list(player_list.clone());
         Ok(ServerRoom {
             name,
             game_state,
-            player_list:    PlayerList::new(vec![]),
+            player_list,
         })
     }
 
@@ -335,6 +382,55 @@ impl ServerRoom {
     fn get_game_state(&mut self, player_mode: PlayerMode) -> &mut GameState {
         self.game_state.set_player_mode(player_mode);
         &mut self.game_state
+    }
+
+    fn has_player(&self, player_name: &str) -> bool {
+        self.player_list.find_player_by_name(player_name).is_some()
+    }
+
+    fn has_wolf_player(&self) -> bool {
+        !self.player_list.find_players_by_mode(PlayerMode::Wolf).is_empty()
+    }
+
+    fn has_sheep_player(&self) -> bool {
+        !self.player_list.find_players_by_mode(PlayerMode::Sheep).is_empty()
+    }
+
+    fn add_player(&mut self,
+                  player_name: &str,
+                  player_mode: PlayerMode) -> ah::Result<()> {
+        match player_mode {
+            PlayerMode::Spectator => (),
+            PlayerMode::Both => {
+                return Err(ah::format_err!("PlayerMode::Both not supported, yet."));
+            },
+            PlayerMode::Wolf => {
+                if self.has_wolf_player() {
+                    return Err(ah::format_err!("The game already has a Wolf player."));
+                }
+            },
+            PlayerMode::Sheep => {
+                if self.has_sheep_player() {
+                    return Err(ah::format_err!("The game already has a Sheep player."));
+                }
+            },
+        }
+
+        if self.has_player(player_name) {
+            Err(ah::format_err!("Player name '{}' is already occupied.",
+                                player_name))
+        } else {
+            self.player_list.add_player(Player::new(player_name.to_string(),
+                                                    player_mode,
+                                                    false));
+            self.game_state.set_room_player_list(self.player_list.clone());
+            Ok(())
+        }
+    }
+
+    fn remove_player(&mut self, player_name: &str) {
+        self.player_list.remove_player_by_name(player_name);
+        self.game_state.set_room_player_list(self.player_list.clone());
     }
 }
 
@@ -379,6 +475,7 @@ impl Server {
                             match ServerInstance::new(&mut stream, thread_rooms) {
                                 Ok(mut instance) => {
                                     instance.run_loop();
+                                    drop(instance);
                                     println!("Server thread exiting.");
                                 },
                                 Err(e) => {

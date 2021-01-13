@@ -53,19 +53,32 @@ fn from_net(data: &[u8]) -> ah::Result<u32> {
     }
 }
 
-fn str2bytes(bytes: &mut [u8], string: &str) -> ah::Result<()> {
-    let len = string.as_bytes().len();
+fn str2bytes(bytes: &mut [u8], string: &str, truncate: bool) -> ah::Result<()> {
+    let mut len = string.as_bytes().len();
     if len > bytes.len() {
-        return Err(ah::format_err!("str2bytes: String is too long."));
+        if !truncate {
+            return Err(ah::format_err!("str2bytes: String is too long."));
+        }
+        len = bytes.len()
     }
     bytes[0..len].copy_from_slice(&string.as_bytes());
     Ok(())
 }
 
-fn bytes2string(bytes: &[u8]) -> ah::Result<String> {
-    let mut bytes = bytes.to_vec();
-    bytes.retain(|&x| x != 0);
-    Ok(String::from_utf8(bytes)?)
+fn bytes2string(bytes: &[u8], lossy: bool) -> ah::Result<String> {
+    // Remove trailing zeros.
+    let mut len = bytes.len();
+    for i in (0..bytes.len()).rev() {
+        if bytes[i] != 0 {
+            break;
+        }
+        len -= 1;
+    }
+    if lossy {
+        Ok(String::from_utf8_lossy(&bytes[0..len]).to_string())
+    } else {
+        Ok(String::from_utf8(bytes[0..len].to_vec())?)
+    }
 }
 
 type FieldsArray = [[u32; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
@@ -276,9 +289,13 @@ pub struct MsgResult {
     header:         MsgHeader,
     in_reply_to_id: u32,
     result_code:    u32,
+    message:        [u8; MSG_RESULT_MAXMSGLEN],
 }
 
-const MSG_RESULT_SIZE: u32 = MSG_HEADER_SIZE + (2 * 4);
+const MSG_RESULT_MAXMSGLEN: usize = 0x200;
+const MSG_RESULT_SIZE: u32 = MSG_HEADER_SIZE +
+                             (2 * 4) +
+                             MSG_RESULT_MAXMSGLEN as u32;
 
 pub const MSG_RESULT_OK: u32    = 0;
 pub const MSG_RESULT_NOK: u32   = 1;
@@ -287,13 +304,17 @@ pub const MSG_RESULT_USER: u32  = 0x10000;
 
 impl MsgResult {
     pub fn new(in_reply_to_msg: &dyn Message,
-               result_code:     u32) -> ah::Result<MsgResult> {
+               result_code:     u32,
+               message:         &str) -> ah::Result<MsgResult> {
+        let mut message_bytes = [0; MSG_RESULT_MAXMSGLEN];
+        str2bytes(&mut message_bytes, message, true).ok();
         Ok(MsgResult {
             header:         MsgHeader::new(MSG_MAGIC,
                                            MSG_RESULT_SIZE,
                                            MSG_ID_RESULT),
             in_reply_to_id: in_reply_to_msg.get_id(),
             result_code,
+            message: message_bytes,
         })
     }
 
@@ -305,11 +326,15 @@ impl MsgResult {
             offset += 4;
             let result_code = from_net(&data[offset..])?;
             offset += 4;
+            let mut message = [0; MSG_RESULT_MAXMSGLEN];
+            message.copy_from_slice(&data[offset..offset+MSG_RESULT_MAXMSGLEN]);
+            offset += MSG_RESULT_MAXMSGLEN;
 
             let msg = MsgResult {
                 header,
                 in_reply_to_id,
-                result_code
+                result_code,
+                message,
             };
             assert_eq!(offset, (MSG_RESULT_SIZE - MSG_HEADER_SIZE) as usize);
             Ok((offset, Box::new(msg)))
@@ -329,6 +354,13 @@ impl MsgResult {
     pub fn is_ok(&self) -> bool {
         self.get_result_code() == MSG_RESULT_OK
     }
+
+    pub fn get_message(&self) -> String {
+        match bytes2string(&self.message, true) {
+            Ok(m) => m,
+            Err(_) => "Failed to parse MsgResult.".to_string(),
+        }
+    }
 }
 
 impl Message for MsgResult {
@@ -341,6 +373,7 @@ impl Message for MsgResult {
         self.header.to_bytes(&mut data);
         data.extend_from_slice(&to_net(self.in_reply_to_id));
         data.extend_from_slice(&to_net(self.result_code));
+        data.extend_from_slice(&self.message);
         assert_eq!(data.len(), MSG_RESULT_SIZE as usize);
         data
     }
@@ -379,9 +412,9 @@ impl MsgJoin {
                player_name: &str,
                player_mode: u32) -> ah::Result<MsgJoin> {
         let mut room_name_bytes = [0; MSG_JOIN_MAXROOMNAME];
-        str2bytes(&mut room_name_bytes, room_name)?;
+        str2bytes(&mut room_name_bytes, room_name, false)?;
         let mut player_name_bytes = [0; MSG_JOIN_MAXPLAYERNAME];
-        str2bytes(&mut player_name_bytes, player_name)?;
+        str2bytes(&mut player_name_bytes, player_name, false)?;
         Ok(MsgJoin {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_JOIN_SIZE,
@@ -419,11 +452,11 @@ impl MsgJoin {
     }
 
     pub fn get_room_name(&self) -> ah::Result<String> {
-        bytes2string(&self.room_name)
+        bytes2string(&self.room_name, false)
     }
 
     pub fn get_player_name(&self) -> ah::Result<String> {
-        bytes2string(&self.player_name)
+        bytes2string(&self.player_name, false)
     }
 
     pub fn get_player_mode(&self) -> u32 {

@@ -63,8 +63,9 @@ macro_rules! send_wait_for_ok {
                             if result.is_ok() {
                                 Some(Ok(()))
                             } else {
-                                Some(Err(ah::format_err!("Server replied not-Ok ({}).",
-                                                         result.get_result_code())))
+                                Some(Err(ah::format_err!("Server replied not-Ok ({}): {}.",
+                                                         result.get_result_code(),
+                                                         result.get_message())))
                             }
                         } else {
                             None

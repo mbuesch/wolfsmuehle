@@ -107,6 +107,29 @@ impl PlayerList {
             players,
         }
     }
+
+    pub fn find_player_by_name(&self, name: &str) -> Option<&Player> {
+        for player in &self.players {
+            if player.name == name {
+                return Some(player);
+            }
+        }
+        None
+    }
+
+    pub fn find_players_by_mode(&self, mode: PlayerMode) -> Vec<Player> {
+        let mut players = self.players.to_vec();
+        players.retain(|p| p.mode == mode);
+        players
+    }
+
+    pub fn add_player(&mut self, player: Player) {
+        self.players.push(player);
+    }
+
+    pub fn remove_player_by_name(&mut self, name: &str) {
+        self.players.retain(|p| p.name != name);
+    }
 }
 
 // vim: ts=4 sw=4 expandtab
