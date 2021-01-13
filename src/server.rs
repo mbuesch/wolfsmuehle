@@ -38,12 +38,14 @@ use crate::player::{
     PlayerList,
     PlayerMode,
     num_to_player_mode,
+    player_mode_to_num,
 };
 use crate::protocol::{
     MSG_BUFFER_SIZE,
-    MSG_RESULT_OK,
     MSG_RESULT_NOK,
+    MSG_RESULT_OK,
     Message,
+    MsgPlayerList,
     MsgPong,
     MsgResult,
     MsgType,
@@ -129,6 +131,26 @@ impl<'a> ServerInstance<'a> {
                 drop(rooms);
                 self.send(&MsgResult::new(*msg, MSG_RESULT_NOK,
                                           "MsgGameState not supported.")?.to_bytes())?;
+            },
+            MsgType::MsgTypeReqPlayerList(_msg) => {
+                let mut replies = vec![];
+                let player_list = room.get_player_list_ref();
+                for (index, player) in player_list.iter().enumerate() {
+                    replies.push(MsgPlayerList::new(
+                        player_list.count() as u32,
+                        index as u32,
+                        &player.name,
+                        player_mode_to_num(player.mode))?);
+                }
+                drop(rooms);
+                for reply in &replies {
+                    self.send(&reply.to_bytes())?;
+                }
+            },
+            MsgType::MsgTypePlayerList(msg) => {
+                drop(rooms);
+                self.send(&MsgResult::new(*msg, MSG_RESULT_NOK,
+                                          "MsgPlayerList not supported.")?.to_bytes())?;
             },
             MsgType::MsgTypeMove(msg) => {
                 match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
@@ -246,6 +268,8 @@ impl<'a> ServerInstance<'a> {
             MsgType::MsgTypeReset(_) |
             MsgType::MsgTypeReqGameState(_) |
             MsgType::MsgTypeGameState(_) |
+            MsgType::MsgTypeReqPlayerList(_) |
+            MsgType::MsgTypePlayerList(_) |
             MsgType::MsgTypeMove(_) => {
                 self.handle_rx_room_message(&mut msg_type)?;
             },
@@ -436,6 +460,10 @@ impl ServerRoom {
     fn remove_player(&mut self, player_name: &str) {
         self.player_list.remove_player_by_name(player_name);
         self.game_state.set_room_player_list(self.player_list.clone());
+    }
+
+    fn get_player_list_ref(&self) -> &PlayerList {
+        &self.player_list
     }
 }
 

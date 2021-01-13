@@ -37,6 +37,7 @@ use crate::player::{
     Player,
     PlayerList,
     PlayerMode,
+    num_to_player_mode,
 };
 use crate::random::random_alphanum;
 use crate::protocol::{
@@ -50,6 +51,7 @@ use crate::protocol::{
     Message,
     MsgGameState,
     MsgMove,
+    MsgPlayerList,
     MsgType,
 };
 use std::fmt;
@@ -202,6 +204,7 @@ pub struct Stats {
 
 pub struct GameState {
     player_mode:        PlayerMode,
+    player_name:        String,
     room_player_list:   PlayerList,
     fields:             [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
     moving:             MoveState,
@@ -231,8 +234,13 @@ impl GameState {
             Player::new("Player".to_string(),
                         player_mode,
                         true)]);
+        let player_name = match player_name {
+            Some(n) => n,
+            None => format!("Player-{}", random_alphanum(5)),
+        };
         let mut game = GameState {
             player_mode,
+            player_name,
             room_player_list,
             fields,
             moving:             MoveState::NoMove,
@@ -245,13 +253,9 @@ impl GameState {
         };
         game.reset_game(true);
         if let Some(connect_to_server) = connect_to_server {
-            let player_name = match player_name {
-                Some(n) => n,
-                None => format!("Player-{}", random_alphanum(5)),
-            };
             game.connect(connect_to_server,
                          &room_name,
-                         &player_name,
+                         &game.player_name.to_string(),
                          player_mode)?;
         }
         game.print_turn();
@@ -408,6 +412,41 @@ impl GameState {
         redraw
     }
 
+    fn client_handle_rx_msg_playerlist(&mut self, msg: &MsgPlayerList) {
+        let total_count = msg.get_total_count();
+        if total_count > 1024 {
+            eprintln!("Received PlayerList with too many players: {}", total_count);
+            return;
+        }
+
+        self.room_player_list.resize(total_count as usize,
+                                     || Player::new("<unknown>".to_string(),
+                                                    PlayerMode::Spectator,
+                                                    false));
+
+        let player_name = match msg.get_player_name() {
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("Received PlayerList with invalid player name: {}", e);
+                return;
+            }
+        };
+        let player_mode = match num_to_player_mode(msg.get_player_mode()) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("Received PlayerList with invalid player mode '{}': {}",
+                          msg.get_player_mode(), e);
+                return;
+            },
+        };
+        let is_self = player_name == self.player_name;
+
+        self.room_player_list.set_player(msg.get_index() as usize,
+                                         Player::new(player_name,
+                                                     player_mode,
+                                                     is_self));
+    }
+
     fn client_handle_rx_messages(&mut self, messages: Vec<Box<dyn Message>>) -> bool {
         let mut redraw = false;
         for message in &messages {
@@ -422,6 +461,7 @@ impl GameState {
                 MsgType::MsgTypeLeave(_) |
                 MsgType::MsgTypeReset(_) |
                 MsgType::MsgTypeReqGameState(_) |
+                MsgType::MsgTypeReqPlayerList(_) |
                 MsgType::MsgTypeMove(_) => {
                     // Ignore.
                 },
@@ -430,10 +470,14 @@ impl GameState {
                         redraw = true;
                     }
                 },
+                MsgType::MsgTypePlayerList(msg) => {
+                    self.client_handle_rx_msg_playerlist(msg);
+                },
             }
         }
 
         if let Some(client) = self.client.as_mut() {
+            client.send_request_playerlist().ok();
             client.send_request_gamestate().ok();
         }
         redraw

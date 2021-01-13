@@ -34,7 +34,7 @@ impl PlayerListView {
             column.pack_start(&cell, true);
             column.add_attribute(&cell, "text", i);
             column.set_title(["Player name",
-                              "Player type",
+                              "Mode",
                               ""][i as usize]);
             tree_view.append_column(&column);
         }
@@ -53,7 +53,7 @@ impl PlayerListView {
     pub fn update(&mut self, player_list: &PlayerList) {
         if *player_list != self.displayed_list {
             self.model.clear();
-            for player in &player_list.players {
+            for player in player_list.iter() {
                 self.model.insert_with_values(
                     None,
                     &[0, 1, 2],

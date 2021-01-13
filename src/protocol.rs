@@ -26,6 +26,14 @@ use std::convert::TryInto;
 
 pub const MSG_BUFFER_SIZE: usize    = 0x1000;
 
+pub const MSG_PLAYERMODE_SPECTATOR: u32 = 0;
+pub const MSG_PLAYERMODE_WOLF: u32      = 1;
+pub const MSG_PLAYERMODE_SHEEP: u32     = 2;
+pub const MSG_PLAYERMODE_BOTH: u32      = 3;
+
+const MSG_MAXROOMNAME: usize        = 64;
+const MSG_MAXPLAYERNAME: usize      = 64;
+
 const MSG_MAGIC: u32                = 0xAA0E1F37;
 
 const MSG_ID_NOP: u32               = 0;
@@ -37,7 +45,9 @@ const MSG_ID_LEAVE: u32             = 5;
 const MSG_ID_RESET: u32             = 6;
 const MSG_ID_REQGAMESTATE: u32      = 7;
 const MSG_ID_GAMESTATE: u32         = 8;
-const MSG_ID_MOVE: u32              = 9;
+const MSG_ID_REQPLAYERLIST: u32     = 9;
+const MSG_ID_PLAYERLIST: u32        = 10;
+const MSG_ID_MOVE: u32              = 11;
 
 /// Convert to network byte order.
 fn to_net(data: u32) -> [u8; 4] {
@@ -94,6 +104,8 @@ pub enum MsgType<'a> {
     MsgTypeReset(&'a MsgReset),
     MsgTypeReqGameState(&'a MsgReqGameState),
     MsgTypeGameState(&'a MsgGameState),
+    MsgTypeReqPlayerList(&'a MsgReqPlayerList),
+    MsgTypePlayerList(&'a MsgPlayerList),
     MsgTypeMove(&'a MsgMove),
 }
 
@@ -186,6 +198,10 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
             MsgReqGameState::from_bytes(header, &data[offset..])?,
         MSG_ID_GAMESTATE =>
             MsgGameState::from_bytes(header, &data[offset..])?,
+        MSG_ID_REQPLAYERLIST =>
+            MsgReqPlayerList::from_bytes(header, &data[offset..])?,
+        MSG_ID_PLAYERLIST =>
+            MsgPlayerList::from_bytes(header, &data[offset..])?,
         MSG_ID_MOVE =>
             MsgMove::from_bytes(header, &data[offset..])?,
         _ =>
@@ -278,6 +294,7 @@ define_trivial_message!(MsgPing, MsgTypePing, MSG_ID_PING);
 define_trivial_message!(MsgPong, MsgTypePong, MSG_ID_PONG);
 define_trivial_message!(MsgLeave, MsgTypeLeave, MSG_ID_LEAVE);
 define_trivial_message!(MsgReset, MsgTypeReset, MSG_ID_RESET);
+define_trivial_message!(MsgReqPlayerList, MsgTypeReqPlayerList, MSG_ID_REQPLAYERLIST);
 define_trivial_message!(MsgReqGameState, MsgTypeReqGameState, MSG_ID_REQGAMESTATE);
 
 //////////////////////////////////////////////////////////////////////////////
@@ -355,7 +372,7 @@ impl MsgResult {
         self.get_result_code() == MSG_RESULT_OK
     }
 
-    pub fn get_message(&self) -> String {
+    pub fn get_text(&self) -> String {
         match bytes2string(&self.message, true) {
             Ok(m) => m,
             Err(_) => "Failed to parse MsgResult.".to_string(),
@@ -390,30 +407,23 @@ impl Message for MsgResult {
 #[derive(Debug)]
 pub struct MsgJoin {
     header:         MsgHeader,
-    room_name:      [u8; MSG_JOIN_MAXROOMNAME],
-    player_name:    [u8; MSG_JOIN_MAXPLAYERNAME],
+    room_name:      [u8; MSG_MAXROOMNAME],
+    player_name:    [u8; MSG_MAXPLAYERNAME],
     player_mode:    u32,
 }
 
-const MSG_JOIN_MAXROOMNAME: usize = 64;
-const MSG_JOIN_MAXPLAYERNAME: usize = 64;
 const MSG_JOIN_SIZE: u32 = MSG_HEADER_SIZE +
-                           MSG_JOIN_MAXROOMNAME as u32 +
-                           MSG_JOIN_MAXPLAYERNAME as u32 +
+                           MSG_MAXROOMNAME as u32 +
+                           MSG_MAXPLAYERNAME as u32 +
                            (1 * 4);
-
-pub const MSG_JOIN_PLAYERMODE_SPECTATOR: u32    = 0;
-pub const MSG_JOIN_PLAYERMODE_WOLF: u32         = 1;
-pub const MSG_JOIN_PLAYERMODE_SHEEP: u32        = 2;
-pub const MSG_JOIN_PLAYERMODE_BOTH: u32         = 3;
 
 impl MsgJoin {
     pub fn new(room_name:   &str,
                player_name: &str,
                player_mode: u32) -> ah::Result<MsgJoin> {
-        let mut room_name_bytes = [0; MSG_JOIN_MAXROOMNAME];
+        let mut room_name_bytes = [0; MSG_MAXROOMNAME];
         str2bytes(&mut room_name_bytes, room_name, false)?;
-        let mut player_name_bytes = [0; MSG_JOIN_MAXPLAYERNAME];
+        let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
         str2bytes(&mut player_name_bytes, player_name, false)?;
         Ok(MsgJoin {
             header:     MsgHeader::new(MSG_MAGIC,
@@ -429,12 +439,12 @@ impl MsgJoin {
         if data.len() >= (MSG_JOIN_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
-            let mut room_name = [0; MSG_JOIN_MAXROOMNAME];
-            room_name.copy_from_slice(&data[offset..offset+MSG_JOIN_MAXROOMNAME]);
-            offset += MSG_JOIN_MAXROOMNAME;
-            let mut player_name = [0; MSG_JOIN_MAXPLAYERNAME];
-            player_name.copy_from_slice(&data[offset..offset+MSG_JOIN_MAXPLAYERNAME]);
-            offset += MSG_JOIN_MAXPLAYERNAME;
+            let mut room_name = [0; MSG_MAXROOMNAME];
+            room_name.copy_from_slice(&data[offset..offset+MSG_MAXROOMNAME]);
+            offset += MSG_MAXROOMNAME;
+            let mut player_name = [0; MSG_MAXPLAYERNAME];
+            player_name.copy_from_slice(&data[offset..offset+MSG_MAXPLAYERNAME]);
+            offset += MSG_MAXPLAYERNAME;
             let player_mode = from_net(&data[offset..])?;
             offset += 4;
 
@@ -593,6 +603,108 @@ impl Message for MsgGameState {
 
     fn get_message(&self) -> MsgType {
         MsgType::MsgTypeGameState(self)
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// MsgPlayerList
+//////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug)]
+pub struct MsgPlayerList {
+    header:         MsgHeader,
+    total_count:    u32,
+    index:          u32,
+    player_name:    [u8; MSG_MAXPLAYERNAME],
+    player_mode:    u32,
+}
+
+const MSG_PLAYER_LIST_SIZE: u32 = MSG_HEADER_SIZE +
+                                  (2 * 4) +
+                                  MSG_MAXPLAYERNAME as u32 +
+                                  (1 * 4);
+
+impl MsgPlayerList {
+    pub fn new(total_count: u32,
+               index: u32,
+               player_name: &str,
+               player_mode: u32) -> ah::Result<MsgPlayerList> {
+        let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
+        str2bytes(&mut player_name_bytes, player_name, false)?;
+        Ok(MsgPlayerList {
+            header:     MsgHeader::new(MSG_MAGIC,
+                                       MSG_PLAYER_LIST_SIZE,
+                                       MSG_ID_PLAYERLIST),
+            total_count,
+            index,
+            player_name: player_name_bytes,
+            player_mode,
+        })
+    }
+
+    fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+        if data.len() >= (MSG_PLAYER_LIST_SIZE - MSG_HEADER_SIZE) as usize {
+            let mut offset = 0;
+
+            let total_count = from_net(&data[offset..])?;
+            offset += 4;
+            let index = from_net(&data[offset..])?;
+            offset += 4;
+            let mut player_name = [0; MSG_MAXPLAYERNAME];
+            player_name.copy_from_slice(&data[offset..offset+MSG_MAXPLAYERNAME]);
+            offset += MSG_MAXPLAYERNAME;
+            let player_mode = from_net(&data[offset..])?;
+            offset += 4;
+
+            let msg = MsgPlayerList {
+                header,
+                total_count,
+                index,
+                player_name,
+                player_mode,
+            };
+            assert_eq!(offset, (MSG_PLAYER_LIST_SIZE - MSG_HEADER_SIZE) as usize);
+            Ok((offset, Box::new(msg)))
+        } else {
+            Err(ah::format_err!("MsgPlayerList: Not enough data."))
+        }
+    }
+
+    pub fn get_total_count(&self) -> u32 {
+        self.total_count
+    }
+
+    pub fn get_index(&self) -> u32 {
+        self.index
+    }
+
+    pub fn get_player_name(&self) -> ah::Result<String> {
+        bytes2string(&self.player_name, false)
+    }
+
+    pub fn get_player_mode(&self) -> u32 {
+        self.player_mode
+    }
+}
+
+impl Message for MsgPlayerList {
+    fn get_id(&self) -> u32 {
+        MSG_ID_PLAYERLIST
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut data = Vec::with_capacity(MSG_PLAYER_LIST_SIZE as usize);
+        self.header.to_bytes(&mut data);
+        data.extend_from_slice(&to_net(self.total_count));
+        data.extend_from_slice(&to_net(self.index));
+        data.extend_from_slice(&self.player_name);
+        data.extend_from_slice(&to_net(self.player_mode));
+        assert_eq!(data.len(), MSG_PLAYER_LIST_SIZE as usize);
+        data
+    }
+
+    fn get_message(&self) -> MsgType {
+        MsgType::MsgTypePlayerList(self)
     }
 }
 

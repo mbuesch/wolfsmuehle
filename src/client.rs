@@ -40,6 +40,7 @@ use crate::protocol::{
     MsgNop,
     MsgPing,
     MsgReqGameState,
+    MsgReqPlayerList,
     MsgReset,
     MsgType,
     buffer_skip,
@@ -65,7 +66,7 @@ macro_rules! send_wait_for_ok {
                             } else {
                                 Some(Err(ah::format_err!("Server replied not-Ok ({}): {}.",
                                                          result.get_result_code(),
-                                                         result.get_message())))
+                                                         result.get_text())))
                             }
                         } else {
                             None
@@ -167,6 +168,11 @@ impl Client {
 
     pub fn send_request_gamestate(&mut self) -> ah::Result<()> {
         self.send(&MsgReqGameState::new().to_bytes())?;
+        Ok(())
+    }
+
+    pub fn send_request_playerlist(&mut self) -> ah::Result<()> {
+        self.send(&MsgReqPlayerList::new().to_bytes())?;
         Ok(())
     }
 

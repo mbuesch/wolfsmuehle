@@ -19,22 +19,22 @@
 
 use anyhow as ah;
 use crate::protocol::{
-    MSG_JOIN_PLAYERMODE_SPECTATOR,
-    MSG_JOIN_PLAYERMODE_WOLF,
-    MSG_JOIN_PLAYERMODE_SHEEP,
-    MSG_JOIN_PLAYERMODE_BOTH,
+    MSG_PLAYERMODE_SPECTATOR,
+    MSG_PLAYERMODE_WOLF,
+    MSG_PLAYERMODE_SHEEP,
+    MSG_PLAYERMODE_BOTH,
 };
 use std::fmt;
 
 pub fn num_to_player_mode(player_mode: u32) -> ah::Result<PlayerMode> {
     match player_mode {
-        MSG_JOIN_PLAYERMODE_SPECTATOR =>
+        MSG_PLAYERMODE_SPECTATOR =>
             Ok(PlayerMode::Spectator),
-        MSG_JOIN_PLAYERMODE_BOTH =>
+        MSG_PLAYERMODE_BOTH =>
             Ok(PlayerMode::Both),
-        MSG_JOIN_PLAYERMODE_WOLF =>
+        MSG_PLAYERMODE_WOLF =>
             Ok(PlayerMode::Wolf),
-        MSG_JOIN_PLAYERMODE_SHEEP =>
+        MSG_PLAYERMODE_SHEEP =>
             Ok(PlayerMode::Sheep),
         _ =>
             Err(ah::format_err!("Received invalid player_mode: {}", player_mode)),
@@ -44,13 +44,13 @@ pub fn num_to_player_mode(player_mode: u32) -> ah::Result<PlayerMode> {
 pub const fn player_mode_to_num(player_mode: PlayerMode) -> u32 {
     match player_mode {
         PlayerMode::Spectator =>
-            MSG_JOIN_PLAYERMODE_SPECTATOR,
+            MSG_PLAYERMODE_SPECTATOR,
         PlayerMode::Both =>
-            MSG_JOIN_PLAYERMODE_BOTH,
+            MSG_PLAYERMODE_BOTH,
         PlayerMode::Wolf =>
-            MSG_JOIN_PLAYERMODE_WOLF,
+            MSG_PLAYERMODE_WOLF,
         PlayerMode::Sheep =>
-            MSG_JOIN_PLAYERMODE_SHEEP,
+            MSG_PLAYERMODE_SHEEP,
     }
 }
 
@@ -98,7 +98,7 @@ impl Player {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PlayerList {
-    pub players:    Vec<Player>,
+    players:    Vec<Player>,
 }
 
 impl PlayerList {
@@ -106,6 +106,17 @@ impl PlayerList {
         PlayerList {
             players,
         }
+    }
+
+    pub fn count(&self) -> usize {
+        self.players.len()
+    }
+
+    pub fn resize<F>(&mut self, new_size: usize, new_item: F)
+    where
+        F: Fn() -> Player,
+    {
+        self.players.resize_with(new_size, || new_item());
     }
 
     pub fn find_player_by_name(&self, name: &str) -> Option<&Player> {
@@ -129,6 +140,44 @@ impl PlayerList {
 
     pub fn remove_player_by_name(&mut self, name: &str) {
         self.players.retain(|p| p.name != name);
+    }
+
+    pub fn set_player(&mut self, index: usize, player: Player) {
+        if index < self.players.len() {
+            self.players[index] = player;
+        }
+    }
+
+    pub fn iter(&self) -> PlayerListIterator {
+        PlayerListIterator::new(self)
+    }
+}
+
+pub struct PlayerListIterator<'a> {
+    player_list:    &'a PlayerList,
+    index:          usize,
+}
+
+impl<'a> PlayerListIterator<'a> {
+    fn new(player_list: &'a PlayerList) -> PlayerListIterator<'a> {
+        PlayerListIterator {
+            player_list,
+            index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for PlayerListIterator<'a> {
+    type Item = &'a Player;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.player_list.players.len() {
+            None
+        } else {
+            let i = self.index;
+            self.index += 1;
+            Some(&self.player_list.players[i])
+        }
     }
 }
 
