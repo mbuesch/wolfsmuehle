@@ -24,6 +24,7 @@ server          = []
 [dependencies]
 anyhow          = "1.0.36"
 libc            = "0.2.82"
+rand            = "0.8.2"
 structopt       = "0.3.21"
 
 cairo-rs        = { version = "0.9.1", optional = true }

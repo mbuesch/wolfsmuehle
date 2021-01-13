@@ -28,6 +28,7 @@ mod main_window;
 mod player;
 #[cfg(feature="server")]
 mod protocol;
+mod random;
 #[cfg(feature="server")]
 mod server;
 
