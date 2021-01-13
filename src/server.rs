@@ -355,13 +355,15 @@ impl<'a> ServerInstance<'a> {
 }
 
 struct ServerRoom {
-    name:           String,
-    game_state:     GameState,
-    player_list:    PlayerList,
+    name:                   String,
+    game_state:             GameState,
+    player_list:            PlayerList,
+    restrict_player_modes:  bool,
 }
 
 impl ServerRoom {
-    fn new(name: String) -> ah::Result<ServerRoom> {
+    fn new(name: String,
+           restrict_player_modes: bool) -> ah::Result<ServerRoom> {
         let mut game_state = GameState::new(PlayerMode::Both,
                                             None, /* no player name */
                                             None, /* no connect */
@@ -372,6 +374,7 @@ impl ServerRoom {
             name,
             game_state,
             player_list,
+            restrict_player_modes,
         })
     }
 
@@ -399,21 +402,23 @@ impl ServerRoom {
     fn add_player(&mut self,
                   player_name: &str,
                   player_mode: PlayerMode) -> ah::Result<()> {
-        match player_mode {
-            PlayerMode::Spectator => (),
-            PlayerMode::Both => {
-                return Err(ah::format_err!("PlayerMode::Both not supported, yet."));
-            },
-            PlayerMode::Wolf => {
-                if self.has_wolf_player() {
-                    return Err(ah::format_err!("The game already has a Wolf player."));
-                }
-            },
-            PlayerMode::Sheep => {
-                if self.has_sheep_player() {
-                    return Err(ah::format_err!("The game already has a Sheep player."));
-                }
-            },
+        if self.restrict_player_modes {
+            match player_mode {
+                PlayerMode::Spectator => (),
+                PlayerMode::Both => {
+                    return Err(ah::format_err!("PlayerMode::Both not supported in restricted mode."));
+                },
+                PlayerMode::Wolf => {
+                    if self.has_wolf_player() {
+                        return Err(ah::format_err!("The game already has a Wolf player."));
+                    }
+                },
+                PlayerMode::Sheep => {
+                    if self.has_sheep_player() {
+                        return Err(ah::format_err!("The game already has a Sheep player."));
+                    }
+                },
+            }
         }
 
         if self.has_player(player_name) {
@@ -435,19 +440,22 @@ impl ServerRoom {
 }
 
 pub struct Server {
-    listener:       TcpListener,
-    max_conns:      usize,
-    active_conns:   Arc<AtomicUsize>,
-    rooms:          Arc<Mutex<Vec<ServerRoom>>>
+    listener:               TcpListener,
+    max_conns:              usize,
+    restrict_player_modes:  bool,
+    active_conns:           Arc<AtomicUsize>,
+    rooms:                  Arc<Mutex<Vec<ServerRoom>>>
 }
 
 impl Server {
     pub fn new(addr: impl ToSocketAddrs,
-               max_conns: u16) -> ah::Result<Server> {
+               max_conns: u16,
+               restrict_player_modes: bool) -> ah::Result<Server> {
         let listener = TcpListener::bind(addr)?;
         Ok(Server {
             listener,
             max_conns:      max_conns as usize,
+            restrict_player_modes,
             active_conns:   Arc::new(AtomicUsize::new(0)),
             rooms:          Arc::new(Mutex::new(vec![])),
         })
@@ -459,7 +467,8 @@ impl Server {
             rooms.clear();
             for name in room_names {
                 println!("Opening room: {}", name);
-                let room = ServerRoom::new(name.to_string())?;
+                let room = ServerRoom::new(name.to_string(),
+                                           self.restrict_player_modes)?;
                 rooms.push(room);
             }
         }

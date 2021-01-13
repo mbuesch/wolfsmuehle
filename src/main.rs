@@ -35,10 +35,11 @@ mod server;
 use anyhow as ah;
 #[cfg(feature="gui")]
 use crate::main_window::MainWindow;
+use crate::player::PlayerMode;
 #[cfg(feature="server")]
 use crate::server::Server;
 #[cfg(feature="gui")]
-use expect_exit::ExpectedWithError;
+use expect_exit::{ExpectedWithError, exit};
 #[cfg(feature="gui")]
 use gio::prelude::*;
 #[cfg(feature="gui")]
@@ -61,12 +62,20 @@ struct Opts {
 
     /// Maximum number of connections to accept in server mode.
     #[cfg(feature="server")]
-    #[structopt(short, long, default_value="10")]
+    #[structopt(short="M", long, default_value="10")]
     max_connections: u16,
 
     /// Server room to open/join.
     #[structopt(short, long)]
     room: Option<Vec<String>>,
+
+    /// Restrict the player modes that can join a room.
+    /// With this option set, only one Wolf player and only
+    /// one Sheep player can join a room.
+    /// In restricted mode, the player mode "both" is not allowed.
+    #[cfg(feature="server")]
+    #[structopt(short="R", long)]
+    restrict_player_modes: bool,
 
     /// Connect to a server.
     #[structopt(short, long)]
@@ -75,6 +84,17 @@ struct Opts {
     /// Use this port for server or client connection.
     #[structopt(short, long, default_value="5596")]
     port: u16,
+
+    /// Use this player name when joining a room, instead of an auto generated one.
+    #[cfg(feature="gui")]
+    #[structopt(short="n", long)]
+    player_name: Option<String>,
+
+    /// Use this player mode when joining a room.
+    /// May be "wolf", "sheep", "both" or "spectator".
+    #[cfg(feature="gui")]
+    #[structopt(short="m", long, default_value="both")]
+    player_mode: String,
 }
 
 #[cfg(feature="server")]
@@ -82,7 +102,9 @@ fn server_fn(opt: &Opts) -> ah::Result<()> {
     let addr = format!("{}:{}", opt.server_bind, opt.port);
 
     println!("Running dedicated server on {} ...", addr);
-    let mut s = Server::new(addr, opt.max_connections)?;
+    let mut s = Server::new(addr,
+                            opt.max_connections,
+                            opt.restrict_player_modes)?;
 
     let default_rooms = vec!["default".to_string()];
     let rooms = match opt.room.as_ref() {
@@ -118,7 +140,19 @@ fn app_fn(app: &gtk::Application) {
         None => default_room,
     };
 
-    MainWindow::new(app, connect, room_name)
+    let player_mode = match &opt.player_mode.to_lowercase().trim()[..] {
+        "wolf" => PlayerMode::Wolf,
+        "sheep" => PlayerMode::Sheep,
+        "both" => PlayerMode::Both,
+        "spectator" => PlayerMode::Spectator,
+        _ => exit("Invalid --player-mode."),
+    };
+
+    MainWindow::new(app,
+                    connect,
+                    room_name,
+                    opt.player_name,
+                    player_mode)
         .expect_or_exit_perror("Startup failed")
         .main_window()
         .show_all();

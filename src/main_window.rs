@@ -57,7 +57,9 @@ pub struct MainWindow {
 impl MainWindow {
     pub fn new(app:               &gtk::Application,
                connect_to_server: Option<String>,
-               room_name:         String) -> ah::Result<MainWindow> {
+               room_name:         String,
+               player_name:       Option<String>,
+               player_mode:       PlayerMode) -> ah::Result<MainWindow> {
         // Create main window.
         let glade_source = include_str!("main_window.glade");
         let builder = gtk::Builder::from_string(glade_source);
@@ -66,10 +68,8 @@ impl MainWindow {
         mainwnd.set_title("Wolfsmühle");
 
         // Create game state.
-        let player_mode = PlayerMode::Both;
-        //TODO
         let game = Rc::new(RefCell::new(GameState::new(player_mode,
-                                                       Some("Player".to_string()),
+                                                       player_name,
                                                        connect_to_server,
                                                        room_name)?));
 

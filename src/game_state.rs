@@ -38,6 +38,7 @@ use crate::player::{
     PlayerList,
     PlayerMode,
 };
+use crate::random::random_alphanum;
 use crate::protocol::{
     MSG_MOVE_ACTION_ABORT,
     MSG_MOVE_ACTION_MOVE,
@@ -244,9 +245,13 @@ impl GameState {
         };
         game.reset_game(true);
         if let Some(connect_to_server) = connect_to_server {
+            let player_name = match player_name {
+                Some(n) => n,
+                None => format!("Player-{}", random_alphanum(5)),
+            };
             game.connect(connect_to_server,
                          &room_name,
-                         &player_name.unwrap(),
+                         &player_name,
                          player_mode)?;
         }
         game.print_turn();
