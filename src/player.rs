@@ -116,7 +116,7 @@ impl PlayerList {
     where
         F: Fn() -> Player,
     {
-        self.players.resize_with(new_size, || new_item());
+        self.players.resize_with(new_size, new_item);
     }
 
     pub fn find_player_by_name(&self, name: &str) -> Option<&Player> {
