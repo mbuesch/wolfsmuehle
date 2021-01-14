@@ -55,7 +55,7 @@ const DEBUG_RAW: bool = false;
 macro_rules! send_wait_for_ok {
     ($self:expr, $name:literal, $msg:expr) => {
         let msg = $msg;
-        $self.send(&msg.to_bytes())?;
+        $self.send_msg(&msg)?;
         $self.wait_for_reply($name,
             |m| {
                 match m.get_message() {
@@ -81,6 +81,7 @@ macro_rules! send_wait_for_ok {
 
 pub struct Client {
     stream:         TcpStream,
+    sequence:       u32,
     tail_buffer:    Option<Vec<u8>>,
     sync:           bool,
 }
@@ -92,6 +93,7 @@ impl Client {
         stream.set_nodelay(true)?;
         Ok(Client {
             stream,
+            sequence:       0,
             tail_buffer:    None,
             sync:           false,
         })
@@ -102,6 +104,12 @@ impl Client {
             println!("Client TX: {:?}", data);
         }
         self.stream.write(data)?;
+        Ok(())
+    }
+
+    fn send_msg(&mut self, msg: &impl Message) -> ah::Result<()> {
+        self.send(&msg.to_bytes(Some(self.sequence)))?;
+        self.sequence = self.sequence.wrapping_add(1);
         Ok(())
     }
 
@@ -127,13 +135,13 @@ impl Client {
 
     /// Send a NOP message to the server.
     pub fn send_nop(&mut self) -> ah::Result<()> {
-        self.send(&MsgNop::new().to_bytes())?;
+        self.send_msg(&MsgNop::new())?;
         Ok(())
     }
 
     /// Send a ping message to the server and wait for the pong response.
     pub fn send_ping(&mut self) -> ah::Result<()> {
-        self.send(&MsgPing::new().to_bytes())?;
+        self.send_msg(&MsgPing::new())?;
         self.wait_for_reply("ping",
             |m| {
                 match m.get_message() {
@@ -167,12 +175,12 @@ impl Client {
     }
 
     pub fn send_request_gamestate(&mut self) -> ah::Result<()> {
-        self.send(&MsgReqGameState::new().to_bytes())?;
+        self.send_msg(&MsgReqGameState::new())?;
         Ok(())
     }
 
     pub fn send_request_playerlist(&mut self) -> ah::Result<()> {
-        self.send(&MsgReqPlayerList::new().to_bytes())?;
+        self.send_msg(&MsgReqPlayerList::new())?;
         Ok(())
     }
 

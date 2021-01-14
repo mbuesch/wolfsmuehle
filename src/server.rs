@@ -59,6 +59,7 @@ const DEBUG_RAW: bool = false;
 /// Server instance thread corresponding to one connected client.
 struct ServerInstance<'a> {
     stream:         &'a mut TcpStream,
+    sequence:       u32,
     peer_addr:      SocketAddr,
     rooms:          Arc<Mutex<Vec<ServerRoom>>>,
     joined_room:    Option<String>,
@@ -84,11 +85,12 @@ impl<'a> ServerInstance<'a> {
         stream.set_nodelay(true)?;
         Ok(ServerInstance {
             stream,
+            sequence:       0,
             peer_addr,
             rooms,
-            joined_room: None,
-            player_name: None,
-            player_mode: PlayerMode::Spectator,
+            joined_room:    None,
+            player_name:    None,
+            player_mode:    PlayerMode::Spectator,
         })
     }
 
@@ -97,6 +99,12 @@ impl<'a> ServerInstance<'a> {
             println!("Server TX: {:?}", data);
         }
         self.stream.write(data)?;
+        Ok(())
+    }
+
+    fn send_msg(&mut self, msg: &impl Message) -> ah::Result<()> {
+        self.send(&msg.to_bytes(Some(self.sequence)))?;
+        self.sequence = self.sequence.wrapping_add(1);
         Ok(())
     }
 
@@ -120,17 +128,17 @@ impl<'a> ServerInstance<'a> {
             MsgType::MsgTypeReset(msg) => {
                 room.get_game_state(self.player_mode).reset_game(false);
                 drop(rooms);
-                self.send(&MsgResult::new(*msg, MSG_RESULT_OK, "")?.to_bytes())?;
+                self.send_msg(&MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
             },
             MsgType::MsgTypeReqGameState(_msg) => {
                 let game_state = room.get_game_state(self.player_mode).make_state_message();
                 drop(rooms);
-                self.send(&game_state.to_bytes())?;
+                self.send_msg(&game_state)?;
             },
             MsgType::MsgTypeGameState(msg) => {
                 drop(rooms);
-                self.send(&MsgResult::new(*msg, MSG_RESULT_NOK,
-                                          "MsgGameState not supported.")?.to_bytes())?;
+                self.send_msg(&MsgResult::new(*msg, MSG_RESULT_NOK,
+                                              "MsgGameState not supported.")?)?;
             },
             MsgType::MsgTypeReqPlayerList(_msg) => {
                 let mut replies = vec![];
@@ -144,24 +152,24 @@ impl<'a> ServerInstance<'a> {
                 }
                 drop(rooms);
                 for reply in &replies {
-                    self.send(&reply.to_bytes())?;
+                    self.send_msg(reply)?;
                 }
             },
             MsgType::MsgTypePlayerList(msg) => {
                 drop(rooms);
-                self.send(&MsgResult::new(*msg, MSG_RESULT_NOK,
-                                          "MsgPlayerList not supported.")?.to_bytes())?;
+                self.send_msg(&MsgResult::new(*msg, MSG_RESULT_NOK,
+                                              "MsgPlayerList not supported.")?)?;
             },
             MsgType::MsgTypeMove(msg) => {
                 match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
                     Ok(_) => {
                         drop(rooms);
-                        self.send(&MsgResult::new(*msg, MSG_RESULT_OK, "")?.to_bytes())?;
+                        self.send_msg(&MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
                     },
                     Err(e) => {
                         drop(rooms);
                         let text = format!("token move error: {}", e);
-                        self.send(&MsgResult::new(*msg, MSG_RESULT_NOK, &text)?.to_bytes())?;
+                        self.send_msg(&MsgResult::new(*msg, MSG_RESULT_NOK, &text)?)?;
                         return Err(ah::format_err!("{}", text));
                     },
                 }
@@ -227,7 +235,7 @@ impl<'a> ServerInstance<'a> {
                 // Nothing to do.
             },
             MsgType::MsgTypePing(_msg) => {
-                self.send(&MsgPong::new().to_bytes())?;
+                self.send_msg(&MsgPong::new())?;
             },
             MsgType::MsgTypeJoin(msg) => {
                 let result;
@@ -252,18 +260,18 @@ impl<'a> ServerInstance<'a> {
                 }
                 match result {
                     Ok(_) => {
-                        self.send(&MsgResult::new(msg, MSG_RESULT_OK, "")?.to_bytes())?;
+                        self.send_msg(&MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
                     },
                     Err(e) => {
                         let text = format!("Join failed: {}", e);
-                        self.send(&MsgResult::new(msg, MSG_RESULT_NOK, &text)?.to_bytes())?;
+                        self.send_msg(&MsgResult::new(msg, MSG_RESULT_NOK, &text)?)?;
                         return Err(ah::format_err!("{}", text));
                     },
                 }
             },
             MsgType::MsgTypeLeave(msg) => {
                 self.do_leave();
-                self.send(&MsgResult::new(msg, MSG_RESULT_OK, "")?.to_bytes())?;
+                self.send_msg(&MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
             },
             MsgType::MsgTypeReset(_) |
             MsgType::MsgTypeReqGameState(_) |

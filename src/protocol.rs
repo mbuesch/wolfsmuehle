@@ -97,7 +97,7 @@ pub enum MsgType<'a> {
 
 pub trait Message {
     fn get_id(&self) -> u32;
-    fn to_bytes(&self) -> Vec<u8>;
+    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8>;
     fn get_message(&self) -> MsgType;
 }
 
@@ -160,10 +160,12 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
     }
     let id = u32::from_net(&data[offset..])?;
     offset += 4;
+    let sequence = u32::from_net(&data[offset..])?;
+    offset += 4;
     // Skip reserved.
-    offset += 5 * 4;
+    offset += 4 * 4;
 
-    let header = MsgHeader::new(magic, size, id);
+    let header = MsgHeader::new(magic, size, id, sequence);
 
     let (_sub_size, message) = match id {
         MSG_ID_NOP =>
@@ -206,28 +208,40 @@ pub struct MsgHeader {
     magic:          u32,
     size:           u32,
     id:             u32,
-    reserved:       [u32; 5],
+    sequence:       u32,
+    reserved:       [u32; 4],
 }
 
 const MSG_HEADER_SIZE: u32  = 4 * 8;
 
 impl MsgHeader {
-    fn new(magic: u32, size: u32, id: u32) -> MsgHeader {
+    fn new(magic: u32,
+           size: u32,
+           id: u32,
+           sequence: u32) -> MsgHeader {
         MsgHeader {
             magic,
             size,
             id,
-            reserved:   [0; 5],
+            sequence,
+            reserved:   [0; 4],
         }
     }
 
-    fn to_bytes(&self, data: &mut Vec<u8>) {
+    fn to_bytes(&self,
+                data: &mut Vec<u8>,
+                sequence: Option<u32>) {
         data.extend_from_slice(&self.magic.to_net());
         data.extend_from_slice(&self.size.to_net());
         data.extend_from_slice(&self.id.to_net());
+        data.extend_from_slice(&match sequence {
+            Some(sequence) => sequence,
+            None => self.sequence,
+        }.to_net());
         for word in &self.reserved {
             data.extend_from_slice(&word.to_net());
         }
+        assert_eq!(data.len(), MSG_HEADER_SIZE as usize);
     }
 }
 
@@ -247,7 +261,8 @@ macro_rules! define_trivial_message {
                 $struct_name {
                     header:     MsgHeader::new(MSG_MAGIC,
                                                MSG_HEADER_SIZE,
-                                               $id),
+                                               $id,
+                                               0),
                 }
             }
 
@@ -261,9 +276,9 @@ macro_rules! define_trivial_message {
                 $id
             }
 
-            fn to_bytes(&self) -> Vec<u8> {
+            fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
                 let mut data = Vec::with_capacity(MSG_HEADER_SIZE as usize);
-                self.header.to_bytes(&mut data);
+                self.header.to_bytes(&mut data, sequence);
                 assert_eq!(data.len(), MSG_HEADER_SIZE as usize);
                 data
             }
@@ -314,7 +329,8 @@ impl MsgResult {
         Ok(MsgResult {
             header:         MsgHeader::new(MSG_MAGIC,
                                            MSG_RESULT_SIZE,
-                                           MSG_ID_RESULT),
+                                           MSG_ID_RESULT,
+                                           0),
             in_reply_to_id: in_reply_to_msg.get_id(),
             result_code,
             message: message_bytes,
@@ -371,9 +387,9 @@ impl Message for MsgResult {
         MSG_ID_RESULT
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_RESULT_SIZE as usize);
-        self.header.to_bytes(&mut data);
+        self.header.to_bytes(&mut data, sequence);
         data.extend_from_slice(&self.in_reply_to_id.to_net());
         data.extend_from_slice(&self.result_code.to_net());
         data.extend_from_slice(&self.message);
@@ -414,7 +430,8 @@ impl MsgJoin {
         Ok(MsgJoin {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_JOIN_SIZE,
-                                       MSG_ID_JOIN),
+                                       MSG_ID_JOIN,
+                                       0),
             room_name:      room_name_bytes,
             player_name:    player_name_bytes,
             player_mode,
@@ -465,9 +482,9 @@ impl Message for MsgJoin {
         MSG_ID_JOIN
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_JOIN_SIZE as usize);
-        self.header.to_bytes(&mut data);
+        self.header.to_bytes(&mut data, sequence);
         data.extend_from_slice(&self.room_name);
         data.extend_from_slice(&self.player_name);
         data.extend_from_slice(&self.player_mode.to_net());
@@ -509,7 +526,8 @@ impl MsgGameState {
         MsgGameState {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_GAME_STATE_SIZE,
-                                       MSG_ID_GAMESTATE),
+                                       MSG_ID_GAMESTATE,
+                                       0),
             fields,
             moving_state,
             moving_x,
@@ -571,9 +589,9 @@ impl Message for MsgGameState {
         MSG_ID_GAMESTATE
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_GAME_STATE_SIZE as usize);
-        self.header.to_bytes(&mut data);
+        self.header.to_bytes(&mut data, sequence);
         for y in 0..(BOARD_HEIGHT as usize) {
             for x in 0..(BOARD_WIDTH as usize) {
                 data.extend_from_slice(&self.fields[y][x].to_net());
@@ -620,7 +638,8 @@ impl MsgPlayerList {
         Ok(MsgPlayerList {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_PLAYER_LIST_SIZE,
-                                       MSG_ID_PLAYERLIST),
+                                       MSG_ID_PLAYERLIST,
+                                       0),
             total_count,
             index,
             player_name: player_name_bytes,
@@ -678,9 +697,9 @@ impl Message for MsgPlayerList {
         MSG_ID_PLAYERLIST
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_PLAYER_LIST_SIZE as usize);
-        self.header.to_bytes(&mut data);
+        self.header.to_bytes(&mut data, sequence);
         data.extend_from_slice(&self.total_count.to_net());
         data.extend_from_slice(&self.index.to_net());
         data.extend_from_slice(&self.player_name);
@@ -726,7 +745,8 @@ impl MsgMove {
         MsgMove {
             header:         MsgHeader::new(MSG_MAGIC,
                                            MSG_MOVE_SIZE,
-                                           MSG_ID_MOVE),
+                                           MSG_ID_MOVE,
+                                           0),
             action,
             token,
             coord_x,
@@ -771,9 +791,9 @@ impl Message for MsgMove {
         MSG_ID_MOVE
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_MOVE_SIZE as usize);
-        self.header.to_bytes(&mut data);
+        self.header.to_bytes(&mut data, sequence);
         data.extend_from_slice(&self.action.to_net());
         data.extend_from_slice(&self.token.to_net());
         data.extend_from_slice(&self.coord_x.to_net());
