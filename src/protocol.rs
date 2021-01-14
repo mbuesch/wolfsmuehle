@@ -96,9 +96,13 @@ pub enum MsgType<'a> {
 }
 
 pub trait Message {
-    fn get_id(&self) -> u32;
+    fn get_header(&self) -> &MsgHeader;
     fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8>;
     fn get_message(&self) -> MsgType;
+
+    fn get_id(&self) -> u32 {
+        self.get_header().get_id()
+    }
 }
 
 /// Helper function: Skip a given length in a buffer.
@@ -228,6 +232,10 @@ impl MsgHeader {
         }
     }
 
+    pub fn get_id(&self) -> u32 {
+        self.id
+    }
+
     fn to_bytes(&self,
                 data: &mut Vec<u8>,
                 sequence: Option<u32>) {
@@ -272,8 +280,8 @@ macro_rules! define_trivial_message {
         }
 
         impl Message for $struct_name {
-            fn get_id(&self) -> u32 {
-                $id
+            fn get_header(&self) -> &MsgHeader {
+                &self.header
             }
 
             fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
@@ -383,8 +391,8 @@ impl MsgResult {
 }
 
 impl Message for MsgResult {
-    fn get_id(&self) -> u32 {
-        MSG_ID_RESULT
+    fn get_header(&self) -> &MsgHeader {
+        &self.header
     }
 
     fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
@@ -478,8 +486,8 @@ impl MsgJoin {
 }
 
 impl Message for MsgJoin {
-    fn get_id(&self) -> u32 {
-        MSG_ID_JOIN
+    fn get_header(&self) -> &MsgHeader {
+        &self.header
     }
 
     fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
@@ -585,8 +593,8 @@ impl MsgGameState {
 }
 
 impl Message for MsgGameState {
-    fn get_id(&self) -> u32 {
-        MSG_ID_GAMESTATE
+    fn get_header(&self) -> &MsgHeader {
+        &self.header
     }
 
     fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
@@ -693,8 +701,8 @@ impl MsgPlayerList {
 }
 
 impl Message for MsgPlayerList {
-    fn get_id(&self) -> u32 {
-        MSG_ID_PLAYERLIST
+    fn get_header(&self) -> &MsgHeader {
+        &self.header
     }
 
     fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
@@ -787,8 +795,8 @@ impl MsgMove {
 }
 
 impl Message for MsgMove {
-    fn get_id(&self) -> u32 {
-        MSG_ID_MOVE
+    fn get_header(&self) -> &MsgHeader {
+        &self.header
     }
 
     fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
