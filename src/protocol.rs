@@ -185,14 +185,18 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
 }
 
 /// Common message implementation details.
-macro_rules! msg_define_common {
-    () => {
+macro_rules! msg_trait_define_common {
+    ($msg_type:ident) => {
         fn get_header(&self) -> &MsgHeader {
             &self.header
         }
 
         fn get_header_mut(&mut self) -> &mut MsgHeader {
             &mut self.header
+        }
+
+        fn get_message(&self) -> MsgType {
+            MsgType::$msg_type(self)
         }
     }
 }
@@ -316,17 +320,13 @@ macro_rules! define_trivial_message {
         }
 
         impl Message for $struct_name {
-            msg_define_common!();
+            msg_trait_define_common!($msg_type);
 
             fn to_bytes(&self) -> Vec<u8> {
                 let mut data = Vec::with_capacity(MSG_HEADER_SIZE as usize);
                 self.header.to_bytes(&mut data);
                 assert_eq!(data.len(), MSG_HEADER_SIZE as usize);
                 data
-            }
-
-            fn get_message(&self) -> MsgType {
-                MsgType::$msg_type(self)
             }
         }
     }
@@ -430,7 +430,7 @@ impl MsgResult {
 }
 
 impl Message for MsgResult {
-    msg_define_common!();
+    msg_trait_define_common!(MsgTypeResult);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_RESULT_SIZE as usize);
@@ -440,10 +440,6 @@ impl Message for MsgResult {
         data.extend_from_slice(&self.message);
         assert_eq!(data.len(), MSG_RESULT_SIZE as usize);
         data
-    }
-
-    fn get_message(&self) -> MsgType {
-        MsgType::MsgTypeResult(self)
     }
 }
 
@@ -523,7 +519,7 @@ impl MsgJoin {
 }
 
 impl Message for MsgJoin {
-    msg_define_common!();
+    msg_trait_define_common!(MsgTypeJoin);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_JOIN_SIZE as usize);
@@ -533,10 +529,6 @@ impl Message for MsgJoin {
         data.extend_from_slice(&self.player_mode.to_net());
         assert_eq!(data.len(), MSG_JOIN_SIZE as usize);
         data
-    }
-
-    fn get_message(&self) -> MsgType {
-        MsgType::MsgTypeJoin(self)
     }
 }
 
@@ -628,7 +620,7 @@ impl MsgGameState {
 }
 
 impl Message for MsgGameState {
-    msg_define_common!();
+    msg_trait_define_common!(MsgTypeGameState);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_GAME_STATE_SIZE as usize);
@@ -644,10 +636,6 @@ impl Message for MsgGameState {
         data.extend_from_slice(&self.turn.to_net());
         assert_eq!(data.len(), MSG_GAME_STATE_SIZE as usize);
         data
-    }
-
-    fn get_message(&self) -> MsgType {
-        MsgType::MsgTypeGameState(self)
     }
 }
 
@@ -734,7 +722,7 @@ impl MsgPlayerList {
 }
 
 impl Message for MsgPlayerList {
-    msg_define_common!();
+    msg_trait_define_common!(MsgTypePlayerList);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_PLAYER_LIST_SIZE as usize);
@@ -745,10 +733,6 @@ impl Message for MsgPlayerList {
         data.extend_from_slice(&self.player_mode.to_net());
         assert_eq!(data.len(), MSG_PLAYER_LIST_SIZE as usize);
         data
-    }
-
-    fn get_message(&self) -> MsgType {
-        MsgType::MsgTypePlayerList(self)
     }
 }
 
@@ -826,7 +810,7 @@ impl MsgMove {
 }
 
 impl Message for MsgMove {
-    msg_define_common!();
+    msg_trait_define_common!(MsgTypeMove);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_MOVE_SIZE as usize);
@@ -837,10 +821,6 @@ impl Message for MsgMove {
         data.extend_from_slice(&self.coord_y.to_net());
         assert_eq!(data.len(), MSG_MOVE_SIZE as usize);
         data
-    }
-
-    fn get_message(&self) -> MsgType {
-        MsgType::MsgTypeMove(self)
     }
 }
 
