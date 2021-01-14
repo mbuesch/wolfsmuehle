@@ -97,7 +97,8 @@ pub enum MsgType<'a> {
 
 pub trait Message {
     fn get_header(&self) -> &MsgHeader;
-    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8>;
+    fn get_header_mut(&mut self) -> &mut MsgHeader;
+    fn to_bytes(&self) -> Vec<u8>;
     fn get_message(&self) -> MsgType;
 
     fn get_id(&self) -> u32 {
@@ -142,36 +143,16 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
         return Ok((0, None));
     }
 
-    let mut offset = 0;
-    let magic = u32::from_net(&data[offset..])?;
-    offset += 4;
-    if magic != MSG_MAGIC {
-        return Err(ah::format_err!("from_bytes: Invalid Message magic (0x{:X} != 0x{:X}).",
-                                   magic, MSG_MAGIC))
-    }
-    let size = u32::from_net(&data[offset..])?;
-    offset += 4;
-    if size < MSG_HEADER_SIZE {
-        return Err(ah::format_err!("from_bytes: Invalid Message length ({} < {}).",
-                                   size, MSG_HEADER_SIZE))
-    }
-    if size > MSG_BUFFER_SIZE as u32 {
-        return Err(ah::format_err!("from_bytes: Invalid Message length ({} > {}).",
-                                   size, MSG_BUFFER_SIZE));
-    }
-    if data.len() < size as usize {
+    let (offset, header) = match MsgHeader::from_bytes(data) {
+        Ok(h) => h,
+        Err(e) => return Err(e),
+    };
+    let msg_len = header.get_size();
+    if data.len() < msg_len as usize {
         return Ok((0, None));
     }
-    let id = u32::from_net(&data[offset..])?;
-    offset += 4;
-    let sequence = u32::from_net(&data[offset..])?;
-    offset += 4;
-    // Skip reserved.
-    offset += 4 * 4;
 
-    let header = MsgHeader::new(magic, size, id, sequence);
-
-    let (_sub_size, message) = match id {
+    let (_sub_size, message) = match header.get_id() {
         MSG_ID_NOP =>
             MsgNop::from_bytes(header, &data[offset..])?,
         MSG_ID_RESULT =>
@@ -197,17 +178,30 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
         MSG_ID_MOVE =>
             MsgMove::from_bytes(header, &data[offset..])?,
         _ =>
-            return Err(ah::format_err!("from_bytes: Unknown ID ({}).", id)),
+            return Err(ah::format_err!("from_bytes: Unknown ID ({}).", header.get_id())),
     };
 
-    Ok((size as usize, Some(message)))
+    Ok((msg_len as usize, Some(message)))
+}
+
+/// Common message implementation details.
+macro_rules! msg_define_common {
+    () => {
+        fn get_header(&self) -> &MsgHeader {
+            &self.header
+        }
+
+        fn get_header_mut(&mut self) -> &mut MsgHeader {
+            &mut self.header
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
 // Message header.
 //////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MsgHeader {
     magic:          u32,
     size:           u32,
@@ -232,24 +226,66 @@ impl MsgHeader {
         }
     }
 
+    pub fn get_size(&self) -> u32 {
+        self.size
+    }
+
     pub fn get_id(&self) -> u32 {
         self.id
     }
 
-    fn to_bytes(&self,
-                data: &mut Vec<u8>,
-                sequence: Option<u32>) {
+    pub fn get_sequence(&self) -> u32 {
+        self.sequence
+    }
+
+    pub fn set_sequence(&mut self, sequence: u32) {
+        self.sequence = sequence;
+    }
+
+    fn from_bytes(data: &[u8]) -> ah::Result<(usize, MsgHeader)> {
+        if data.len() >= MSG_HEADER_SIZE as usize {
+            let mut offset = 0;
+            let magic = u32::from_net(&data[offset..])?;
+            offset += 4;
+            if magic != MSG_MAGIC {
+                return Err(ah::format_err!("from_bytes: Invalid Message magic (0x{:X} != 0x{:X}).",
+                                           magic, MSG_MAGIC))
+            }
+            let size = u32::from_net(&data[offset..])?;
+            offset += 4;
+            if size < MSG_HEADER_SIZE {
+                return Err(ah::format_err!("from_bytes: Invalid Message length ({} < {}).",
+                                           size, MSG_HEADER_SIZE))
+            }
+            if size > MSG_BUFFER_SIZE as u32 {
+                return Err(ah::format_err!("from_bytes: Invalid Message length ({} > {}).",
+                                           size, MSG_BUFFER_SIZE));
+            }
+            let id = u32::from_net(&data[offset..])?;
+            offset += 4;
+            let sequence = u32::from_net(&data[offset..])?;
+            offset += 4;
+            // Skip reserved.
+            offset += 4 * 4;
+
+            let header = MsgHeader::new(magic, size, id, sequence);
+            assert_eq!(offset, MSG_HEADER_SIZE as usize);
+            Ok((offset, header))
+        } else {
+            Err(ah::format_err!("MsgHeader: Not enough data."))
+        }
+    }
+
+    fn to_bytes(&self, data: &mut Vec<u8>) {
+        let initial_len = data.len();
         data.extend_from_slice(&self.magic.to_net());
         data.extend_from_slice(&self.size.to_net());
         data.extend_from_slice(&self.id.to_net());
-        data.extend_from_slice(&match sequence {
-            Some(sequence) => sequence,
-            None => self.sequence,
-        }.to_net());
+        data.extend_from_slice(&self.sequence.to_net());
         for word in &self.reserved {
             data.extend_from_slice(&word.to_net());
         }
-        assert_eq!(data.len(), MSG_HEADER_SIZE as usize);
+        assert_eq!(data.len() - initial_len, MSG_HEADER_SIZE as usize);
     }
 }
 
@@ -280,13 +316,11 @@ macro_rules! define_trivial_message {
         }
 
         impl Message for $struct_name {
-            fn get_header(&self) -> &MsgHeader {
-                &self.header
-            }
+            msg_define_common!();
 
-            fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
+            fn to_bytes(&self) -> Vec<u8> {
                 let mut data = Vec::with_capacity(MSG_HEADER_SIZE as usize);
-                self.header.to_bytes(&mut data, sequence);
+                self.header.to_bytes(&mut data);
                 assert_eq!(data.len(), MSG_HEADER_SIZE as usize);
                 data
             }
@@ -312,15 +346,16 @@ define_trivial_message!(MsgReqGameState, MsgTypeReqGameState, MSG_ID_REQGAMESTAT
 
 #[derive(Debug)]
 pub struct MsgResult {
-    header:         MsgHeader,
-    in_reply_to_id: u32,
-    result_code:    u32,
-    message:        [u8; MSG_RESULT_MAXMSGLEN],
+    header:             MsgHeader,
+    in_reply_to_header: MsgHeader,
+    result_code:        u32,
+    message:            [u8; MSG_RESULT_MAXMSGLEN],
 }
 
 const MSG_RESULT_MAXMSGLEN: usize = 0x200;
 const MSG_RESULT_SIZE: u32 = MSG_HEADER_SIZE +
-                             (2 * 4) +
+                             MSG_HEADER_SIZE +
+                             (1 * 4) +
                              MSG_RESULT_MAXMSGLEN as u32;
 
 pub const MSG_RESULT_OK: u32    = 0;
@@ -339,7 +374,7 @@ impl MsgResult {
                                            MSG_RESULT_SIZE,
                                            MSG_ID_RESULT,
                                            0),
-            in_reply_to_id: in_reply_to_msg.get_id(),
+            in_reply_to_header: in_reply_to_msg.get_header().clone(),
             result_code,
             message: message_bytes,
         })
@@ -349,8 +384,8 @@ impl MsgResult {
         if data.len() >= (MSG_RESULT_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
-            let in_reply_to_id = u32::from_net(&data[offset..])?;
-            offset += 4;
+            let (count, in_reply_to_header) = MsgHeader::from_bytes(&data[offset..])?;
+            offset += count;
             let result_code = u32::from_net(&data[offset..])?;
             offset += 4;
             let mut message = [0; MSG_RESULT_MAXMSGLEN];
@@ -359,7 +394,7 @@ impl MsgResult {
 
             let msg = MsgResult {
                 header,
-                in_reply_to_id,
+                in_reply_to_header,
                 result_code,
                 message,
             };
@@ -371,7 +406,11 @@ impl MsgResult {
     }
 
     pub fn is_in_reply_to(&self, other: &dyn Message) -> bool {
-        self.in_reply_to_id == other.get_id()
+        let repl_header = &self.in_reply_to_header;
+        let other_header = other.get_header();
+
+        repl_header.get_id() == other_header.get_id() &&
+        repl_header.get_sequence() == other_header.get_sequence()
     }
 
     pub fn get_result_code(&self) -> u32 {
@@ -391,14 +430,12 @@ impl MsgResult {
 }
 
 impl Message for MsgResult {
-    fn get_header(&self) -> &MsgHeader {
-        &self.header
-    }
+    msg_define_common!();
 
-    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
+    fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_RESULT_SIZE as usize);
-        self.header.to_bytes(&mut data, sequence);
-        data.extend_from_slice(&self.in_reply_to_id.to_net());
+        self.header.to_bytes(&mut data);
+        self.in_reply_to_header.to_bytes(&mut data);
         data.extend_from_slice(&self.result_code.to_net());
         data.extend_from_slice(&self.message);
         assert_eq!(data.len(), MSG_RESULT_SIZE as usize);
@@ -486,13 +523,11 @@ impl MsgJoin {
 }
 
 impl Message for MsgJoin {
-    fn get_header(&self) -> &MsgHeader {
-        &self.header
-    }
+    msg_define_common!();
 
-    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
+    fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_JOIN_SIZE as usize);
-        self.header.to_bytes(&mut data, sequence);
+        self.header.to_bytes(&mut data);
         data.extend_from_slice(&self.room_name);
         data.extend_from_slice(&self.player_name);
         data.extend_from_slice(&self.player_mode.to_net());
@@ -593,13 +628,11 @@ impl MsgGameState {
 }
 
 impl Message for MsgGameState {
-    fn get_header(&self) -> &MsgHeader {
-        &self.header
-    }
+    msg_define_common!();
 
-    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
+    fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_GAME_STATE_SIZE as usize);
-        self.header.to_bytes(&mut data, sequence);
+        self.header.to_bytes(&mut data);
         for y in 0..(BOARD_HEIGHT as usize) {
             for x in 0..(BOARD_WIDTH as usize) {
                 data.extend_from_slice(&self.fields[y][x].to_net());
@@ -701,13 +734,11 @@ impl MsgPlayerList {
 }
 
 impl Message for MsgPlayerList {
-    fn get_header(&self) -> &MsgHeader {
-        &self.header
-    }
+    msg_define_common!();
 
-    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
+    fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_PLAYER_LIST_SIZE as usize);
-        self.header.to_bytes(&mut data, sequence);
+        self.header.to_bytes(&mut data);
         data.extend_from_slice(&self.total_count.to_net());
         data.extend_from_slice(&self.index.to_net());
         data.extend_from_slice(&self.player_name);
@@ -795,13 +826,11 @@ impl MsgMove {
 }
 
 impl Message for MsgMove {
-    fn get_header(&self) -> &MsgHeader {
-        &self.header
-    }
+    msg_define_common!();
 
-    fn to_bytes(&self, sequence: Option<u32>) -> Vec<u8> {
+    fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_MOVE_SIZE as usize);
-        self.header.to_bytes(&mut data, sequence);
+        self.header.to_bytes(&mut data);
         data.extend_from_slice(&self.action.to_net());
         data.extend_from_slice(&self.token.to_net());
         data.extend_from_slice(&self.coord_x.to_net());

@@ -102,8 +102,9 @@ impl<'a> ServerInstance<'a> {
         Ok(())
     }
 
-    fn send_msg(&mut self, msg: &impl Message) -> ah::Result<()> {
-        self.send(&msg.to_bytes(Some(self.sequence)))?;
+    fn send_msg(&mut self, msg: &mut impl Message) -> ah::Result<()> {
+        msg.get_header_mut().set_sequence(self.sequence);
+        self.send(&msg.to_bytes())?;
         self.sequence = self.sequence.wrapping_add(1);
         Ok(())
     }
@@ -128,17 +129,17 @@ impl<'a> ServerInstance<'a> {
             MsgType::MsgTypeReset(msg) => {
                 room.get_game_state(self.player_mode).reset_game(false);
                 drop(rooms);
-                self.send_msg(&MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
+                self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
             },
             MsgType::MsgTypeReqGameState(_msg) => {
-                let game_state = room.get_game_state(self.player_mode).make_state_message();
+                let mut game_state = room.get_game_state(self.player_mode).make_state_message();
                 drop(rooms);
-                self.send_msg(&game_state)?;
+                self.send_msg(&mut game_state)?;
             },
             MsgType::MsgTypeGameState(msg) => {
                 drop(rooms);
-                self.send_msg(&MsgResult::new(*msg, MSG_RESULT_NOK,
-                                              "MsgGameState not supported.")?)?;
+                self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK,
+                                                  "MsgGameState not supported.")?)?;
             },
             MsgType::MsgTypeReqPlayerList(_msg) => {
                 let mut replies = vec![];
@@ -151,25 +152,25 @@ impl<'a> ServerInstance<'a> {
                         player_mode_to_num(player.mode))?);
                 }
                 drop(rooms);
-                for reply in &replies {
+                for reply in &mut replies {
                     self.send_msg(reply)?;
                 }
             },
             MsgType::MsgTypePlayerList(msg) => {
                 drop(rooms);
-                self.send_msg(&MsgResult::new(*msg, MSG_RESULT_NOK,
-                                              "MsgPlayerList not supported.")?)?;
+                self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK,
+                                                  "MsgPlayerList not supported.")?)?;
             },
             MsgType::MsgTypeMove(msg) => {
                 match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
                     Ok(_) => {
                         drop(rooms);
-                        self.send_msg(&MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
+                        self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
                     },
                     Err(e) => {
                         drop(rooms);
                         let text = format!("token move error: {}", e);
-                        self.send_msg(&MsgResult::new(*msg, MSG_RESULT_NOK, &text)?)?;
+                        self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK, &text)?)?;
                         return Err(ah::format_err!("{}", text));
                     },
                 }
@@ -235,7 +236,7 @@ impl<'a> ServerInstance<'a> {
                 // Nothing to do.
             },
             MsgType::MsgTypePing(_msg) => {
-                self.send_msg(&MsgPong::new())?;
+                self.send_msg(&mut MsgPong::new())?;
             },
             MsgType::MsgTypeJoin(msg) => {
                 let result;
@@ -260,18 +261,18 @@ impl<'a> ServerInstance<'a> {
                 }
                 match result {
                     Ok(_) => {
-                        self.send_msg(&MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
+                        self.send_msg(&mut MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
                     },
                     Err(e) => {
                         let text = format!("Join failed: {}", e);
-                        self.send_msg(&MsgResult::new(msg, MSG_RESULT_NOK, &text)?)?;
+                        self.send_msg(&mut MsgResult::new(msg, MSG_RESULT_NOK, &text)?)?;
                         return Err(ah::format_err!("{}", text));
                     },
                 }
             },
             MsgType::MsgTypeLeave(msg) => {
                 self.do_leave();
-                self.send_msg(&MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
+                self.send_msg(&mut MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
             },
             MsgType::MsgTypeReset(_) |
             MsgType::MsgTypeReqGameState(_) |

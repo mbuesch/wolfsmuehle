@@ -54,8 +54,8 @@ const DEBUG_RAW: bool = false;
 
 macro_rules! send_wait_for_ok {
     ($self:expr, $name:literal, $msg:expr) => {
-        let msg = $msg;
-        $self.send_msg(&msg)?;
+        let mut msg = $msg;
+        $self.send_msg(&mut msg)?;
         $self.wait_for_reply($name,
             |m| {
                 match m.get_message() {
@@ -107,8 +107,9 @@ impl Client {
         Ok(())
     }
 
-    fn send_msg(&mut self, msg: &impl Message) -> ah::Result<()> {
-        self.send(&msg.to_bytes(Some(self.sequence)))?;
+    fn send_msg(&mut self, msg: &mut impl Message) -> ah::Result<()> {
+        msg.get_header_mut().set_sequence(self.sequence);
+        self.send(&msg.to_bytes())?;
         self.sequence = self.sequence.wrapping_add(1);
         Ok(())
     }
@@ -135,13 +136,13 @@ impl Client {
 
     /// Send a NOP message to the server.
     pub fn send_nop(&mut self) -> ah::Result<()> {
-        self.send_msg(&MsgNop::new())?;
+        self.send_msg(&mut MsgNop::new())?;
         Ok(())
     }
 
     /// Send a ping message to the server and wait for the pong response.
     pub fn send_ping(&mut self) -> ah::Result<()> {
-        self.send_msg(&MsgPing::new())?;
+        self.send_msg(&mut MsgPing::new())?;
         self.wait_for_reply("ping",
             |m| {
                 match m.get_message() {
@@ -175,12 +176,12 @@ impl Client {
     }
 
     pub fn send_request_gamestate(&mut self) -> ah::Result<()> {
-        self.send_msg(&MsgReqGameState::new())?;
+        self.send_msg(&mut MsgReqGameState::new())?;
         Ok(())
     }
 
     pub fn send_request_playerlist(&mut self) -> ah::Result<()> {
-        self.send_msg(&MsgReqPlayerList::new())?;
+        self.send_msg(&mut MsgReqPlayerList::new())?;
         Ok(())
     }
 
