@@ -18,6 +18,7 @@
 //
 
 mod board;
+mod byteorder;
 #[cfg(feature="server")]
 mod client;
 mod coord;

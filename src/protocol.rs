@@ -22,7 +22,7 @@ use crate::board::{
     BOARD_WIDTH,
     BOARD_HEIGHT,
 };
-use std::convert::TryInto;
+use crate::byteorder::{ToNet32, FromNet32};
 
 pub const MSG_BUFFER_SIZE: usize    = 0x1000;
 
@@ -48,20 +48,6 @@ const MSG_ID_GAMESTATE: u32         = 8;
 const MSG_ID_REQPLAYERLIST: u32     = 9;
 const MSG_ID_PLAYERLIST: u32        = 10;
 const MSG_ID_MOVE: u32              = 11;
-
-/// Convert to network byte order.
-fn to_net(data: u32) -> [u8; 4] {
-    data.to_be_bytes()
-}
-
-/// Convert from network byte order.
-fn from_net(data: &[u8]) -> ah::Result<u32> {
-    if data.len() >= 4 {
-        Ok(u32::from_be_bytes(data[0..4].try_into()?))
-    } else {
-        return Err(ah::format_err!("from_net: Not enough data."))
-    }
-}
 
 fn str2bytes(bytes: &mut [u8], string: &str, truncate: bool) -> ah::Result<()> {
     let mut len = string.as_bytes().len();
@@ -134,7 +120,7 @@ pub fn net_sync(data: &[u8]) -> Option<usize> {
     let len = data.len();
     if len >= 4 {
         for skip in 0..(len - 4) {
-            match from_net(&data[skip..]) {
+            match u32::from_net(&data[skip..]) {
                 Ok(MSG_MAGIC) => return Some(skip),
                 Ok(_) | Err(_) => (),
             }
@@ -153,13 +139,13 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
     }
 
     let mut offset = 0;
-    let magic = from_net(&data[offset..])?;
+    let magic = u32::from_net(&data[offset..])?;
     offset += 4;
     if magic != MSG_MAGIC {
         return Err(ah::format_err!("from_bytes: Invalid Message magic (0x{:X} != 0x{:X}).",
                                    magic, MSG_MAGIC))
     }
-    let size = from_net(&data[offset..])?;
+    let size = u32::from_net(&data[offset..])?;
     offset += 4;
     if size < MSG_HEADER_SIZE {
         return Err(ah::format_err!("from_bytes: Invalid Message length ({} < {}).",
@@ -172,7 +158,7 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
     if data.len() < size as usize {
         return Ok((0, None));
     }
-    let id = from_net(&data[offset..])?;
+    let id = u32::from_net(&data[offset..])?;
     offset += 4;
     // Skip reserved.
     offset += 5 * 4;
@@ -236,11 +222,11 @@ impl MsgHeader {
     }
 
     fn to_bytes(&self, data: &mut Vec<u8>) {
-        data.extend_from_slice(&to_net(self.magic));
-        data.extend_from_slice(&to_net(self.size));
-        data.extend_from_slice(&to_net(self.id));
+        data.extend_from_slice(&self.magic.to_net());
+        data.extend_from_slice(&self.size.to_net());
+        data.extend_from_slice(&self.id.to_net());
         for word in &self.reserved {
-            data.extend_from_slice(&to_net(*word));
+            data.extend_from_slice(&word.to_net());
         }
     }
 }
@@ -339,9 +325,9 @@ impl MsgResult {
         if data.len() >= (MSG_RESULT_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
-            let in_reply_to_id = from_net(&data[offset..])?;
+            let in_reply_to_id = u32::from_net(&data[offset..])?;
             offset += 4;
-            let result_code = from_net(&data[offset..])?;
+            let result_code = u32::from_net(&data[offset..])?;
             offset += 4;
             let mut message = [0; MSG_RESULT_MAXMSGLEN];
             message.copy_from_slice(&data[offset..offset+MSG_RESULT_MAXMSGLEN]);
@@ -388,8 +374,8 @@ impl Message for MsgResult {
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_RESULT_SIZE as usize);
         self.header.to_bytes(&mut data);
-        data.extend_from_slice(&to_net(self.in_reply_to_id));
-        data.extend_from_slice(&to_net(self.result_code));
+        data.extend_from_slice(&self.in_reply_to_id.to_net());
+        data.extend_from_slice(&self.result_code.to_net());
         data.extend_from_slice(&self.message);
         assert_eq!(data.len(), MSG_RESULT_SIZE as usize);
         data
@@ -445,7 +431,7 @@ impl MsgJoin {
             let mut player_name = [0; MSG_MAXPLAYERNAME];
             player_name.copy_from_slice(&data[offset..offset+MSG_MAXPLAYERNAME]);
             offset += MSG_MAXPLAYERNAME;
-            let player_mode = from_net(&data[offset..])?;
+            let player_mode = u32::from_net(&data[offset..])?;
             offset += 4;
 
             let msg = MsgJoin {
@@ -484,7 +470,7 @@ impl Message for MsgJoin {
         self.header.to_bytes(&mut data);
         data.extend_from_slice(&self.room_name);
         data.extend_from_slice(&self.player_name);
-        data.extend_from_slice(&to_net(self.player_mode));
+        data.extend_from_slice(&self.player_mode.to_net());
         assert_eq!(data.len(), MSG_JOIN_SIZE as usize);
         data
     }
@@ -539,17 +525,17 @@ impl MsgGameState {
             let mut fields = [[MSG_FIELD_INVALID; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
             for y in 0..(BOARD_HEIGHT as usize) {
                 for x in 0..(BOARD_WIDTH as usize) {
-                    fields[y][x] = from_net(&data[offset..])?;
+                    fields[y][x] = u32::from_net(&data[offset..])?;
                     offset += 4;
                 }
             }
-            let moving_state = from_net(&data[offset..])?;
+            let moving_state = u32::from_net(&data[offset..])?;
             offset += 4;
-            let moving_x = from_net(&data[offset..])?;
+            let moving_x = u32::from_net(&data[offset..])?;
             offset += 4;
-            let moving_y = from_net(&data[offset..])?;
+            let moving_y = u32::from_net(&data[offset..])?;
             offset += 4;
-            let turn = from_net(&data[offset..])?;
+            let turn = u32::from_net(&data[offset..])?;
             offset += 4;
 
             let msg = MsgGameState {
@@ -590,13 +576,13 @@ impl Message for MsgGameState {
         self.header.to_bytes(&mut data);
         for y in 0..(BOARD_HEIGHT as usize) {
             for x in 0..(BOARD_WIDTH as usize) {
-                data.extend_from_slice(&to_net(self.fields[y][x]));
+                data.extend_from_slice(&self.fields[y][x].to_net());
             }
         }
-        data.extend_from_slice(&to_net(self.moving_state));
-        data.extend_from_slice(&to_net(self.moving_x));
-        data.extend_from_slice(&to_net(self.moving_y));
-        data.extend_from_slice(&to_net(self.turn));
+        data.extend_from_slice(&self.moving_state.to_net());
+        data.extend_from_slice(&self.moving_x.to_net());
+        data.extend_from_slice(&self.moving_y.to_net());
+        data.extend_from_slice(&self.turn.to_net());
         assert_eq!(data.len(), MSG_GAME_STATE_SIZE as usize);
         data
     }
@@ -646,14 +632,14 @@ impl MsgPlayerList {
         if data.len() >= (MSG_PLAYER_LIST_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
-            let total_count = from_net(&data[offset..])?;
+            let total_count = u32::from_net(&data[offset..])?;
             offset += 4;
-            let index = from_net(&data[offset..])?;
+            let index = u32::from_net(&data[offset..])?;
             offset += 4;
             let mut player_name = [0; MSG_MAXPLAYERNAME];
             player_name.copy_from_slice(&data[offset..offset+MSG_MAXPLAYERNAME]);
             offset += MSG_MAXPLAYERNAME;
-            let player_mode = from_net(&data[offset..])?;
+            let player_mode = u32::from_net(&data[offset..])?;
             offset += 4;
 
             let msg = MsgPlayerList {
@@ -695,10 +681,10 @@ impl Message for MsgPlayerList {
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_PLAYER_LIST_SIZE as usize);
         self.header.to_bytes(&mut data);
-        data.extend_from_slice(&to_net(self.total_count));
-        data.extend_from_slice(&to_net(self.index));
+        data.extend_from_slice(&self.total_count.to_net());
+        data.extend_from_slice(&self.index.to_net());
         data.extend_from_slice(&self.player_name);
-        data.extend_from_slice(&to_net(self.player_mode));
+        data.extend_from_slice(&self.player_mode.to_net());
         assert_eq!(data.len(), MSG_PLAYER_LIST_SIZE as usize);
         data
     }
@@ -752,13 +738,13 @@ impl MsgMove {
         if data.len() >= (MSG_MOVE_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
-            let action = from_net(&data[offset..])?;
+            let action = u32::from_net(&data[offset..])?;
             offset += 4;
-            let token = from_net(&data[offset..])?;
+            let token = u32::from_net(&data[offset..])?;
             offset += 4;
-            let coord_x = from_net(&data[offset..])?;
+            let coord_x = u32::from_net(&data[offset..])?;
             offset += 4;
-            let coord_y = from_net(&data[offset..])?;
+            let coord_y = u32::from_net(&data[offset..])?;
             offset += 4;
 
             let msg = MsgMove {
@@ -788,10 +774,10 @@ impl Message for MsgMove {
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_MOVE_SIZE as usize);
         self.header.to_bytes(&mut data);
-        data.extend_from_slice(&to_net(self.action));
-        data.extend_from_slice(&to_net(self.token));
-        data.extend_from_slice(&to_net(self.coord_x));
-        data.extend_from_slice(&to_net(self.coord_y));
+        data.extend_from_slice(&self.action.to_net());
+        data.extend_from_slice(&self.token.to_net());
+        data.extend_from_slice(&self.coord_x.to_net());
+        data.extend_from_slice(&self.coord_y.to_net());
         assert_eq!(data.len(), MSG_MOVE_SIZE as usize);
         data
     }
