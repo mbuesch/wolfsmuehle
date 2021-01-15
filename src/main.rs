@@ -20,6 +20,7 @@
 mod board;
 mod coord;
 mod game_state;
+#[cfg(feature="gui")]
 mod gtk_helpers;
 #[cfg(feature="gui")]
 mod main_window;
@@ -31,6 +32,7 @@ mod random;
 use anyhow as ah;
 #[cfg(feature="gui")]
 use crate::main_window::MainWindow;
+#[cfg(feature="gui")]
 use crate::player::PlayerMode;
 #[cfg(feature="server")]
 use crate::net::server::Server;
