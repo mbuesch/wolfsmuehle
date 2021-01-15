@@ -17,6 +17,8 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+mod serialize;
+
 use anyhow as ah;
 use crate::board::{
     BOARD_HEIGHT,
@@ -709,21 +711,23 @@ impl GameState {
             },
         }
     }
-}
 
-impl Drop for GameState {
-    fn drop(&mut self) {
-        self.disconnect();
+    pub fn make_state_message(&self) -> MsgGameState {
+        let mut fields = [[field_state_to_num(FieldState::Unused);
+                           BOARD_WIDTH as usize];
+                          BOARD_HEIGHT as usize];
+        for coord in BoardIterator::new() {
+            let x = coord.x as usize;
+            let y = coord.y as usize;
+            fields[y][x] = field_state_to_num(self.fields[y][x]);
+        }
+        let (moving_state, moving_x, moving_y) = move_state_to_num(&self.moving);
+        let turn = turn_to_num(&self.turn);
+        MsgGameState::new(fields, moving_state, moving_x, moving_y, turn)
     }
-}
 
-//////////////////////////////////////////////////////////////////////////////
-// Client interface.
-//////////////////////////////////////////////////////////////////////////////
-
-impl GameState {
-    fn client_handle_rx_msg_gamestate(&mut self, msg: &MsgGameState) -> bool {
-        let mut redraw = false;
+    pub fn read_state_message(&mut self, msg: &MsgGameState) -> bool {
+        let mut changed = false;
 
         if !self.i_am_moving {
             for coord in BoardIterator::new() {
@@ -738,7 +742,7 @@ impl GameState {
                 };
                 if field != self.fields[y][x] {
                     self.fields[y][x] = field;
-                    redraw = true;
+                    changed = true;
                 }
             }
 
@@ -751,7 +755,7 @@ impl GameState {
             };
             if moving != self.moving {
                 self.moving = moving;
-                redraw = true;
+                changed = true;
             }
 
             let turn = match num_to_turn(msg.get_turn()) {
@@ -763,14 +767,30 @@ impl GameState {
             };
             if turn != self.turn {
                 self.turn = turn;
-                redraw = true;
+                changed = true;
             }
 
-            if redraw {
+            if changed {
                 self.recalc_stats();
             }
         }
-        redraw
+        changed
+    }
+}
+
+impl Drop for GameState {
+    fn drop(&mut self) {
+        self.disconnect();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Client interface.
+//////////////////////////////////////////////////////////////////////////////
+
+impl GameState {
+    fn client_handle_rx_msg_gamestate(&mut self, msg: &MsgGameState) -> bool {
+        self.read_state_message(msg)
     }
 
     fn client_handle_rx_msg_playerlist(&mut self, msg: &MsgPlayerList) {
@@ -932,6 +952,14 @@ impl GameState {
         }
         Ok(())
     }
+
+    fn client_send_full_gamestate(&mut self) -> ah::Result<()> {
+        let mut game_state_msg = self.make_state_message();
+        if let Some(client) = self.client.as_mut() {
+            client.send_msg_wait_for_ok("GameState", 3.0, &mut game_state_msg)?;
+        }
+        Ok(())
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -939,20 +967,6 @@ impl GameState {
 //////////////////////////////////////////////////////////////////////////////
 
 impl GameState {
-    pub fn make_state_message(&self) -> MsgGameState {
-        let mut fields = [[field_state_to_num(FieldState::Unused);
-                           BOARD_WIDTH as usize];
-                          BOARD_HEIGHT as usize];
-        for coord in BoardIterator::new() {
-            let x = coord.x as usize;
-            let y = coord.y as usize;
-            fields[y][x] = field_state_to_num(self.fields[y][x]);
-        }
-        let (moving_state, moving_x, moving_y) = move_state_to_num(&self.moving);
-        let turn = turn_to_num(&self.turn);
-        MsgGameState::new(fields, moving_state, moving_x, moving_y, turn)
-    }
-
     pub fn server_handle_rx_msg_move(&mut self, msg: &MsgMove) -> ah::Result<()> {
         match msg.get_action() {
             (MSG_MOVE_ACTION_PICK, x, y) => {

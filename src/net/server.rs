@@ -137,9 +137,9 @@ impl<'a> ServerInstance<'a> {
                 self.send_msg(&mut game_state)?;
             },
             MsgType::GameState(msg) => {
+                room.get_game_state(self.player_mode).read_state_message(msg);
                 drop(rooms);
-                self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK,
-                                                  "MsgGameState not supported.")?)?;
+                self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
             },
             MsgType::ReqPlayerList(_msg) => {
                 let mut replies = vec![];

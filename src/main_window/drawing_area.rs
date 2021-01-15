@@ -17,6 +17,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+use anyhow as ah;
 use crate::board::{
     BOARD_LINES,
     BoardIterator,
@@ -35,6 +36,7 @@ use crate::game_state::{
 use crate::gsigparam;
 use crate::gtk_helpers::*;
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 
 const XOFFS: f64    = 25.0;
@@ -308,11 +310,18 @@ impl DrawingArea {
         };
     }
 
-    fn reset_game(&mut self) {
-        let mut game = self.game.borrow_mut();
-        game.reset_game(false);
+    pub fn reset_game(&mut self) {
+        self.game.borrow_mut().reset_game(false);
         self.moving_token = MovingToken::NoToken;
         self.redraw();
+    }
+
+    pub fn load_game(&mut self, filename: &Path) -> ah::Result<()> {
+        self.game.borrow_mut().load_game(filename)
+    }
+
+    pub fn save_game(&self, filename: &Path) -> ah::Result<()> {
+        self.game.borrow().save_game(filename)
     }
 
     fn gsignal_draw(&self, param: &[glib::Value]) -> Option<glib::Value> {
@@ -346,12 +355,6 @@ impl DrawingArea {
         Some(false.to_value())
     }
 
-    fn gsignal_newgame(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
-        self.reset_game();
-        None
-    }
-
     pub fn connect_signals(draw: Rc<RefCell<DrawingArea>>,
                            handler_name: &str) -> Option<GSigHandler> {
         match handler_name {
@@ -363,12 +366,6 @@ impl DrawingArea {
                 Some(Box::new(move |p| draw.borrow_mut().gsignal_buttonpress(p))),
             "handler_drawingarea_buttonrelease" =>
                 Some(Box::new(move |p| draw.borrow_mut().gsignal_buttonrelease(p))),
-            "handler_resetgame" =>
-                Some(Box::new(move |p| draw.borrow_mut().gsignal_newgame(p))),
-            "handler_loadgame" =>
-                None,//TODO
-            "handler_savegame" =>
-                None,//TODO
             _ => None,
         }
     }

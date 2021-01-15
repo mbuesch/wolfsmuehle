@@ -150,6 +150,7 @@ fn app_fn(app: &gtk::Application) {
                     opt.player_name,
                     player_mode)
         .expect_or_exit_perror("Startup failed")
+        .borrow()
         .main_window()
         .show_all();
 }
