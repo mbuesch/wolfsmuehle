@@ -58,18 +58,18 @@ type FieldsArray = [[u32; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 
 #[derive(Debug)]
 pub enum MsgType<'a> {
-    MsgTypeNop(&'a MsgNop),
-    MsgTypeResult(&'a MsgResult),
-    MsgTypePing(&'a MsgPing),
-    MsgTypePong(&'a MsgPong),
-    MsgTypeJoin(&'a MsgJoin),
-    MsgTypeLeave(&'a MsgLeave),
-    MsgTypeReset(&'a MsgReset),
-    MsgTypeReqGameState(&'a MsgReqGameState),
-    MsgTypeGameState(&'a MsgGameState),
-    MsgTypeReqPlayerList(&'a MsgReqPlayerList),
-    MsgTypePlayerList(&'a MsgPlayerList),
-    MsgTypeMove(&'a MsgMove),
+    Nop(&'a MsgNop),
+    Result(&'a MsgResult),
+    Ping(&'a MsgPing),
+    Pong(&'a MsgPong),
+    Join(&'a MsgJoin),
+    Leave(&'a MsgLeave),
+    Reset(&'a MsgReset),
+    ReqGameState(&'a MsgReqGameState),
+    GameState(&'a MsgGameState),
+    ReqPlayerList(&'a MsgReqPlayerList),
+    PlayerList(&'a MsgPlayerList),
+    Move(&'a MsgMove),
 }
 
 pub trait Message {
@@ -309,13 +309,13 @@ macro_rules! define_trivial_message {
     }
 }
 
-define_trivial_message!(MsgNop, MsgTypeNop, MSG_ID_NOP);
-define_trivial_message!(MsgPing, MsgTypePing, MSG_ID_PING);
-define_trivial_message!(MsgPong, MsgTypePong, MSG_ID_PONG);
-define_trivial_message!(MsgLeave, MsgTypeLeave, MSG_ID_LEAVE);
-define_trivial_message!(MsgReset, MsgTypeReset, MSG_ID_RESET);
-define_trivial_message!(MsgReqPlayerList, MsgTypeReqPlayerList, MSG_ID_REQPLAYERLIST);
-define_trivial_message!(MsgReqGameState, MsgTypeReqGameState, MSG_ID_REQGAMESTATE);
+define_trivial_message!(MsgNop, Nop, MSG_ID_NOP);
+define_trivial_message!(MsgPing, Ping, MSG_ID_PING);
+define_trivial_message!(MsgPong, Pong, MSG_ID_PONG);
+define_trivial_message!(MsgLeave, Leave, MSG_ID_LEAVE);
+define_trivial_message!(MsgReset, Reset, MSG_ID_RESET);
+define_trivial_message!(MsgReqPlayerList, ReqPlayerList, MSG_ID_REQPLAYERLIST);
+define_trivial_message!(MsgReqGameState, ReqGameState, MSG_ID_REQGAMESTATE);
 
 //////////////////////////////////////////////////////////////////////////////
 // MsgResult
@@ -407,7 +407,7 @@ impl MsgResult {
 }
 
 impl Message for MsgResult {
-    msg_trait_define_common!(MsgTypeResult);
+    msg_trait_define_common!(Result);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_RESULT_SIZE as usize);
@@ -496,7 +496,7 @@ impl MsgJoin {
 }
 
 impl Message for MsgJoin {
-    msg_trait_define_common!(MsgTypeJoin);
+    msg_trait_define_common!(Join);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_JOIN_SIZE as usize);
@@ -597,7 +597,7 @@ impl MsgGameState {
 }
 
 impl Message for MsgGameState {
-    msg_trait_define_common!(MsgTypeGameState);
+    msg_trait_define_common!(GameState);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_GAME_STATE_SIZE as usize);
@@ -699,7 +699,7 @@ impl MsgPlayerList {
 }
 
 impl Message for MsgPlayerList {
-    msg_trait_define_common!(MsgTypePlayerList);
+    msg_trait_define_common!(PlayerList);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_PLAYER_LIST_SIZE as usize);
@@ -787,7 +787,7 @@ impl MsgMove {
 }
 
 impl Message for MsgMove {
-    msg_trait_define_common!(MsgTypeMove);
+    msg_trait_define_common!(Move);
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_MOVE_SIZE as usize);

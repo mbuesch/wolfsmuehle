@@ -126,22 +126,22 @@ impl<'a> ServerInstance<'a> {
         };
 
         match msg_type {
-            MsgType::MsgTypeReset(msg) => {
+            MsgType::Reset(msg) => {
                 room.get_game_state(self.player_mode).reset_game(false);
                 drop(rooms);
                 self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
             },
-            MsgType::MsgTypeReqGameState(_msg) => {
+            MsgType::ReqGameState(_msg) => {
                 let mut game_state = room.get_game_state(self.player_mode).make_state_message();
                 drop(rooms);
                 self.send_msg(&mut game_state)?;
             },
-            MsgType::MsgTypeGameState(msg) => {
+            MsgType::GameState(msg) => {
                 drop(rooms);
                 self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK,
                                                   "MsgGameState not supported.")?)?;
             },
-            MsgType::MsgTypeReqPlayerList(_msg) => {
+            MsgType::ReqPlayerList(_msg) => {
                 let mut replies = vec![];
                 let player_list = room.get_player_list_ref();
                 for (index, player) in player_list.iter().enumerate() {
@@ -156,12 +156,12 @@ impl<'a> ServerInstance<'a> {
                     self.send_msg(reply)?;
                 }
             },
-            MsgType::MsgTypePlayerList(msg) => {
+            MsgType::PlayerList(msg) => {
                 drop(rooms);
                 self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK,
                                                   "MsgPlayerList not supported.")?)?;
             },
-            MsgType::MsgTypeMove(msg) => {
+            MsgType::Move(msg) => {
                 match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
                     Ok(_) => {
                         drop(rooms);
@@ -230,15 +230,15 @@ impl<'a> ServerInstance<'a> {
     /// Handle received message.
     fn handle_rx_message(&mut self, mut msg_type: MsgType) -> ah::Result<()> {
         match msg_type {
-            MsgType::MsgTypeNop(_) |
-            MsgType::MsgTypePong(_) |
-            MsgType::MsgTypeResult(_) => {
+            MsgType::Nop(_) |
+            MsgType::Pong(_) |
+            MsgType::Result(_) => {
                 // Nothing to do.
             },
-            MsgType::MsgTypePing(_msg) => {
+            MsgType::Ping(_msg) => {
                 self.send_msg(&mut MsgPong::new())?;
             },
-            MsgType::MsgTypeJoin(msg) => {
+            MsgType::Join(msg) => {
                 let result;
                 if self.joined_room.is_none() {
                     if let Ok(room_name) = msg.get_room_name() {
@@ -270,16 +270,16 @@ impl<'a> ServerInstance<'a> {
                     },
                 }
             },
-            MsgType::MsgTypeLeave(msg) => {
+            MsgType::Leave(msg) => {
                 self.do_leave();
                 self.send_msg(&mut MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
             },
-            MsgType::MsgTypeReset(_) |
-            MsgType::MsgTypeReqGameState(_) |
-            MsgType::MsgTypeGameState(_) |
-            MsgType::MsgTypeReqPlayerList(_) |
-            MsgType::MsgTypePlayerList(_) |
-            MsgType::MsgTypeMove(_) => {
+            MsgType::Reset(_) |
+            MsgType::ReqGameState(_) |
+            MsgType::GameState(_) |
+            MsgType::ReqPlayerList(_) |
+            MsgType::PlayerList(_) |
+            MsgType::Move(_) => {
                 self.handle_rx_room_message(&mut msg_type)?;
             },
         }

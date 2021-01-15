@@ -455,24 +455,24 @@ impl GameState {
             let message = message.get_message();
 
             match message {
-                MsgType::MsgTypeNop(_) |
-                MsgType::MsgTypeResult(_) |
-                MsgType::MsgTypePing(_) |
-                MsgType::MsgTypePong(_) |
-                MsgType::MsgTypeJoin(_) |
-                MsgType::MsgTypeLeave(_) |
-                MsgType::MsgTypeReset(_) |
-                MsgType::MsgTypeReqGameState(_) |
-                MsgType::MsgTypeReqPlayerList(_) |
-                MsgType::MsgTypeMove(_) => {
+                MsgType::Nop(_) |
+                MsgType::Result(_) |
+                MsgType::Ping(_) |
+                MsgType::Pong(_) |
+                MsgType::Join(_) |
+                MsgType::Leave(_) |
+                MsgType::Reset(_) |
+                MsgType::ReqGameState(_) |
+                MsgType::ReqPlayerList(_) |
+                MsgType::Move(_) => {
                     // Ignore.
                 },
-                MsgType::MsgTypeGameState(msg) => {
+                MsgType::GameState(msg) => {
                     if self.client_handle_rx_msg_gamestate(msg) {
                         redraw = true;
                     }
                 },
-                MsgType::MsgTypePlayerList(msg) => {
+                MsgType::PlayerList(msg) => {
                     self.client_handle_rx_msg_playerlist(msg);
                 },
             }

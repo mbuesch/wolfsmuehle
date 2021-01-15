@@ -59,7 +59,7 @@ macro_rules! send_wait_for_ok {
         $self.wait_for_reply($name,
             |m| {
                 match m.get_message() {
-                    MsgType::MsgTypeResult(result) => {
+                    MsgType::Result(result) => {
                         if result.is_in_reply_to(&msg) {
                             if result.is_ok() {
                                 Some(Ok(()))
@@ -146,7 +146,7 @@ impl Client {
         self.wait_for_reply("ping",
             |m| {
                 match m.get_message() {
-                    MsgType::MsgTypePong(_) => Some(Ok(())),
+                    MsgType::Pong(_) => Some(Ok(())),
                     _ => None,
                 }
             }
