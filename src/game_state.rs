@@ -518,7 +518,7 @@ impl GameState {
     }
 
     fn disconnect(&mut self) {
-        if let Some(mut client) = self.client.take() {
+        if let Some(client) = self.client.take() {
             client.disconnect();
         }
     }

@@ -53,10 +53,10 @@ use libc::{EAGAIN, EWOULDBLOCK};
 const DEBUG_RAW: bool = false;
 
 macro_rules! send_wait_for_ok {
-    ($self:expr, $name:literal, $msg:expr) => {
+    ($self:expr, $name:literal, $timeout:expr, $msg:expr) => {
         let mut msg = $msg;
         $self.send_msg(&mut msg)?;
-        $self.wait_for_reply($name,
+        $self.wait_for_reply($name, $timeout,
             |m| {
                 match m.get_message() {
                     MsgType::Result(result) => {
@@ -99,6 +99,7 @@ impl Client {
         })
     }
 
+    /// Send a data blob to the server.
     fn send(&mut self, data: &[u8]) -> ah::Result<()> {
         if DEBUG_RAW {
             println!("Client TX: {:?}", data);
@@ -107,6 +108,7 @@ impl Client {
         Ok(())
     }
 
+    /// Send a message to the server.
     fn send_msg(&mut self, msg: &mut impl Message) -> ah::Result<()> {
         msg.get_header_mut().set_sequence(self.sequence);
         self.send(&msg.to_bytes())?;
@@ -114,11 +116,16 @@ impl Client {
         Ok(())
     }
 
-    fn wait_for_reply<F>(&mut self, name: &str, check_match: F) -> ah::Result<()>
+    /// Wait for a reply from the server.
+    fn wait_for_reply<F>(&mut self,
+                         name: &str,
+                         timeout: f32,
+                         check_match: F) -> ah::Result<()>
         where F: Fn(Box<dyn Message>) -> Option<ah::Result<()>>
     {
         let begin = Instant::now();
-        while Instant::now().duration_since(begin).as_millis() < 3000 {
+        let timeout_ms = (timeout * 1000.0).ceil() as u128;
+        while Instant::now().duration_since(begin).as_millis() < timeout_ms {
             match self.poll() {
                 Some(messages) => {
                     for m in messages {
@@ -143,7 +150,7 @@ impl Client {
     /// Send a ping message to the server and wait for the pong response.
     pub fn send_ping(&mut self) -> ah::Result<()> {
         self.send_msg(&mut MsgPing::new())?;
-        self.wait_for_reply("ping",
+        self.wait_for_reply("ping", 3.0,
             |m| {
                 match m.get_message() {
                     MsgType::Pong(_) => Some(Ok(())),
@@ -154,47 +161,54 @@ impl Client {
         Ok(())
     }
 
+    /// Send a Join message to the server and wait for the result.
     pub fn send_join(&mut self,
                      room_name: &str,
                      player_name: &str,
                      player_mode: PlayerMode) -> ah::Result<()> {
-        send_wait_for_ok!(self, "join",
+        send_wait_for_ok!(self, "join", 3.0,
                           MsgJoin::new(room_name,
                                        player_name,
                                        player_mode_to_num(player_mode))?);
         Ok(())
     }
 
+    /// Send a Leave message to the server and wait for the result.
     pub fn send_leave(&mut self) -> ah::Result<()> {
-        send_wait_for_ok!(self, "leave", MsgLeave::new());
+        send_wait_for_ok!(self, "leave", 1.0, MsgLeave::new());
         Ok(())
     }
 
+    /// Send a Reset message to the server and wait for the result.
     pub fn send_reset(&mut self) -> ah::Result<()> {
-        send_wait_for_ok!(self, "reset", MsgReset::new());
+        send_wait_for_ok!(self, "reset", 3.0, MsgReset::new());
         Ok(())
     }
 
+    /// Send a RequestGameState message to the server.
     pub fn send_request_gamestate(&mut self) -> ah::Result<()> {
         self.send_msg(&mut MsgReqGameState::new())?;
         Ok(())
     }
 
+    /// Send a RequestPlayerList message to the server.
     pub fn send_request_playerlist(&mut self) -> ah::Result<()> {
         self.send_msg(&mut MsgReqPlayerList::new())?;
         Ok(())
     }
 
+    /// Send a MoveToken message to the server and wait for the result.
     pub fn send_move_token(&mut self,
                            action: u32,
                            token: u32,
                            coord_x: u32,
                            coord_y: u32) -> ah::Result<()> {
-        send_wait_for_ok!(self, "move",
+        send_wait_for_ok!(self, "move", 1.0,
                           MsgMove::new(action, token, coord_x, coord_y));
         Ok(())
     }
 
+    /// Poll the received messages.
     pub fn poll(&mut self) -> Option<Vec<Box<dyn Message>>> {
         let mut buffer = vec![0u8; MSG_BUFFER_SIZE];
         let offset = match self.tail_buffer.as_ref() {
@@ -268,7 +282,8 @@ impl Client {
         Some(messages)
     }
 
-    pub fn disconnect(&mut self) {
+    /// Disconnect from the server.
+    pub fn disconnect(mut self) {
         self.send_leave().ok();
         self.stream.shutdown(Shutdown::Both).ok();
     }
