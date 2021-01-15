@@ -2,6 +2,21 @@
 <!-- Generated with glade 3.38.2 -->
 <interface>
   <requires lib="gtk+" version="3.24"/>
+  <object class="GtkImage" id="image1">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="stock">gtk-new</property>
+  </object>
+  <object class="GtkImage" id="image2">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="stock">gtk-open</property>
+  </object>
+  <object class="GtkImage" id="image3">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="stock">gtk-save-as</property>
+  </object>
   <object class="GtkApplicationWindow" id="mainwindow">
     <property name="can-focus">False</property>
     <property name="show-menubar">False</property>
@@ -26,39 +41,32 @@
                     <property name="can-focus">False</property>
                     <child>
                       <object class="GtkImageMenuItem">
-                        <property name="label">gtk-new</property>
+                        <property name="label">Reset game</property>
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="use-underline">True</property>
-                        <property name="use-stock">True</property>
-                        <signal name="activate" handler="handler_newgame" swapped="no"/>
+                        <property name="image">image1</property>
+                        <property name="use-stock">False</property>
+                        <signal name="activate" handler="handler_resetgame" swapped="no"/>
                       </object>
                     </child>
                     <child>
                       <object class="GtkImageMenuItem">
-                        <property name="label">gtk-open</property>
+                        <property name="label">Load game state...</property>
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="use-underline">True</property>
-                        <property name="use-stock">True</property>
+                        <property name="image">image2</property>
+                        <property name="use-stock">False</property>
+                        <signal name="activate" handler="handler_loadgame" swapped="no"/>
                       </object>
                     </child>
                     <child>
                       <object class="GtkImageMenuItem">
-                        <property name="label">gtk-save</property>
+                        <property name="label">Save game state...</property>
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="use-underline">True</property>
-                        <property name="use-stock">True</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkImageMenuItem">
-                        <property name="label">gtk-save-as</property>
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="use-underline">True</property>
-                        <property name="use-stock">True</property>
+                        <property name="image">image3</property>
+                        <property name="use-stock">False</property>
+                        <signal name="activate" handler="handler_savegame" swapped="no"/>
                       </object>
                     </child>
                     <child>

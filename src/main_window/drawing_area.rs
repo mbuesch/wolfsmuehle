@@ -363,8 +363,12 @@ impl DrawingArea {
                 Some(Box::new(move |p| draw.borrow_mut().gsignal_buttonpress(p))),
             "handler_drawingarea_buttonrelease" =>
                 Some(Box::new(move |p| draw.borrow_mut().gsignal_buttonrelease(p))),
-            "handler_newgame" =>
+            "handler_resetgame" =>
                 Some(Box::new(move |p| draw.borrow_mut().gsignal_newgame(p))),
+            "handler_loadgame" =>
+                None,//TODO
+            "handler_savegame" =>
+                None,//TODO
             _ => None,
         }
     }

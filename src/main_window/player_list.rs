@@ -21,7 +21,6 @@ use crate::gtk_helpers::*;
 use crate::player::PlayerList;
 
 pub struct PlayerListView {
-    tree_view:      gtk::TreeView,
     model:          gtk::ListStore,
     displayed_list: PlayerList,
 }
@@ -44,7 +43,6 @@ impl PlayerListView {
         tree_view.set_model(Some(&model));
 
         PlayerListView {
-            tree_view,
             model,
             displayed_list: PlayerList::new(vec![]),
         }
