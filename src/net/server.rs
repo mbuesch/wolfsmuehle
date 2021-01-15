@@ -137,9 +137,16 @@ impl<'a> ServerInstance<'a> {
                 self.send_msg(&mut game_state)?;
             },
             MsgType::GameState(msg) => {
-                room.get_game_state(self.player_mode).read_state_message(msg);
+                let err = match room.get_game_state(self.player_mode).read_state_message(msg, false) {
+                    Ok(_) => None,
+                    Err(e) => Some(format!("{}", e)),
+                };
                 drop(rooms);
-                self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
+                if let Some(e) = err {
+                    self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK, &e)?)?;
+                } else {
+                    self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
+                }
             },
             MsgType::ReqPlayerList(_msg) => {
                 let mut replies = vec![];

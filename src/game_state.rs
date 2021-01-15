@@ -726,9 +726,14 @@ impl GameState {
         MsgGameState::new(fields, moving_state, moving_x, moving_y, turn)
     }
 
-    pub fn read_state_message(&mut self, msg: &MsgGameState) -> bool {
-        let mut changed = false;
+    pub fn read_state_message(&mut self,
+                              msg: &MsgGameState,
+                              force: bool) -> ah::Result<bool> {
+        if !force && self.player_mode == PlayerMode::Spectator {
+            return Err(ah::format_err!("Player is spectator. Not allowed to load game state."));
+        }
 
+        let mut changed = false;
         if !self.i_am_moving {
             for coord in BoardIterator::new() {
                 let x = coord.x as usize;
@@ -774,7 +779,7 @@ impl GameState {
                 self.recalc_stats();
             }
         }
-        changed
+        Ok(changed)
     }
 }
 
@@ -790,7 +795,10 @@ impl Drop for GameState {
 
 impl GameState {
     fn client_handle_rx_msg_gamestate(&mut self, msg: &MsgGameState) -> bool {
-        self.read_state_message(msg)
+        match self.read_state_message(msg, true) {
+            Ok(changed) => changed,
+            Err(_) => false,
+        }
     }
 
     fn client_handle_rx_msg_playerlist(&mut self, msg: &MsgPlayerList) {
