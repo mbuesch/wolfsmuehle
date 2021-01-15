@@ -52,33 +52,6 @@ use libc::{EAGAIN, EWOULDBLOCK};
 
 const DEBUG_RAW: bool = false;
 
-macro_rules! send_wait_for_ok {
-    ($self:expr, $name:literal, $timeout:expr, $msg:expr) => {
-        let mut msg = $msg;
-        $self.send_msg(&mut msg)?;
-        $self.wait_for_reply($name, $timeout,
-            |m| {
-                match m.get_message() {
-                    MsgType::Result(result) => {
-                        if result.is_in_reply_to(&msg) {
-                            if result.is_ok() {
-                                Some(Ok(()))
-                            } else {
-                                Some(Err(ah::format_err!("Server replied not-Ok ({}): {}.",
-                                                         result.get_result_code(),
-                                                         result.get_text())))
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-        )?;
-    }
-}
-
 pub struct Client {
     stream:         TcpStream,
     sequence:       u32,
@@ -109,7 +82,7 @@ impl Client {
     }
 
     /// Send a message to the server.
-    fn send_msg(&mut self, msg: &mut impl Message) -> ah::Result<()> {
+    pub fn send_msg(&mut self, msg: &mut impl Message) -> ah::Result<()> {
         msg.get_header_mut().set_sequence(self.sequence);
         self.send(&msg.to_bytes())?;
         self.sequence = self.sequence.wrapping_add(1);
@@ -141,6 +114,34 @@ impl Client {
         Err(ah::format_err!("Timeout waiting for {} reply.", name))
     }
 
+    pub fn send_msg_wait_for_ok(&mut self,
+                                name: &str,
+                                timeout: f32,
+                                msg: &mut impl Message) -> ah::Result<()> {
+        self.send_msg(msg)?;
+        self.wait_for_reply(name, timeout,
+            |m| {
+                match m.get_message() {
+                    MsgType::Result(result) => {
+                        if result.is_in_reply_to(msg) {
+                            if result.is_ok() {
+                                Some(Ok(()))
+                            } else {
+                                Some(Err(ah::format_err!("Server replied not-Ok ({}): {}.",
+                                                         result.get_result_code(),
+                                                         result.get_text())))
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            }
+        )?;
+        Ok(())
+    }
+
     /// Send a NOP message to the server.
     pub fn send_nop(&mut self) -> ah::Result<()> {
         self.send_msg(&mut MsgNop::new())?;
@@ -166,22 +167,24 @@ impl Client {
                      room_name: &str,
                      player_name: &str,
                      player_mode: PlayerMode) -> ah::Result<()> {
-        send_wait_for_ok!(self, "join", 3.0,
-                          MsgJoin::new(room_name,
-                                       player_name,
-                                       player_mode_to_num(player_mode))?);
+        self.send_msg_wait_for_ok(
+            "join",
+            3.0,
+            &mut MsgJoin::new(room_name,
+                              player_name,
+                              player_mode_to_num(player_mode))?)?;
         Ok(())
     }
 
     /// Send a Leave message to the server and wait for the result.
     pub fn send_leave(&mut self) -> ah::Result<()> {
-        send_wait_for_ok!(self, "leave", 1.0, MsgLeave::new());
+        self.send_msg_wait_for_ok("leave", 1.0, &mut MsgLeave::new())?;
         Ok(())
     }
 
     /// Send a Reset message to the server and wait for the result.
     pub fn send_reset(&mut self) -> ah::Result<()> {
-        send_wait_for_ok!(self, "reset", 3.0, MsgReset::new());
+        self.send_msg_wait_for_ok("reset", 3.0, &mut MsgReset::new())?;
         Ok(())
     }
 
@@ -203,8 +206,10 @@ impl Client {
                            token: u32,
                            coord_x: u32,
                            coord_y: u32) -> ah::Result<()> {
-        send_wait_for_ok!(self, "move", 1.0,
-                          MsgMove::new(action, token, coord_x, coord_y));
+        self.send_msg_wait_for_ok(
+            "move",
+            1.0,
+            &mut MsgMove::new(action, token, coord_x, coord_y))?;
         Ok(())
     }
 
