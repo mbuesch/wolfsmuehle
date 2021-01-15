@@ -289,12 +289,7 @@ impl GameState {
         self.just_beaten = None;
 
         self.recalc_stats();
-
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_reset() {
-                eprintln!("Failed to game-reset: {}", e);
-            }
-        }
+        self.client_send_reset_game();
     }
 
     pub fn set_player_mode(&mut self, player_mode: PlayerMode) {
@@ -325,202 +320,6 @@ impl GameState {
             }
         }
         self.stats.sheep_beaten = self.orig_sheep_count - self.stats.sheep;
-    }
-
-    pub fn make_state_message(&self) -> MsgGameState {
-        let mut fields = [[field_state_to_num(FieldState::Unused);
-                           BOARD_WIDTH as usize];
-                          BOARD_HEIGHT as usize];
-        for coord in BoardIterator::new() {
-            let x = coord.x as usize;
-            let y = coord.y as usize;
-            fields[y][x] = field_state_to_num(self.fields[y][x]);
-        }
-        let (moving_state, moving_x, moving_y) = move_state_to_num(&self.moving);
-        let turn = turn_to_num(&self.turn);
-        MsgGameState::new(fields, moving_state, moving_x, moving_y, turn)
-    }
-
-    pub fn server_handle_rx_msg_move(&mut self, msg: &MsgMove) -> ah::Result<()> {
-        match msg.get_action() {
-            (MSG_MOVE_ACTION_PICK, x, y) => {
-                self.move_pick(coord!(x as i16, y as i16))?;
-            },
-            (MSG_MOVE_ACTION_MOVE, _x, _y) => {
-                //TODO
-            },
-            (MSG_MOVE_ACTION_PUT, x, y) => {
-                self.move_put(coord!(x as i16, y as i16))?;
-            },
-            (MSG_MOVE_ACTION_ABORT, _x, _y) => {
-                self.move_abort();
-            },
-            (action, _, _) => {
-                eprintln!("Received invalid move action: {}", action);
-            },
-        }
-        Ok(())
-    }
-
-    fn client_handle_rx_msg_gamestate(&mut self, msg: &MsgGameState) -> bool {
-//        println!("Gamestate RX {:?}", msg);
-        let mut redraw = false;
-
-        if !self.i_am_moving {
-            for coord in BoardIterator::new() {
-                let x = coord.x as usize;
-                let y = coord.y as usize;
-                let field = match num_to_field_state(msg.get_fields()[y][x]) {
-                    Ok(field) => field,
-                    Err(e) => {
-                        eprintln!("Received invalid field state: {}", e);
-                        self.fields[y][x]
-                    },
-                };
-                if field != self.fields[y][x] {
-                    self.fields[y][x] = field;
-                    redraw = true;
-                }
-            }
-
-            let moving = match num_to_move_state(msg.get_moving()) {
-                Ok(moving) => moving,
-                Err(e) => {
-                    eprintln!("Received invalid moving state: {}", e);
-                    self.moving
-                },
-            };
-            if moving != self.moving {
-                self.moving = moving;
-                redraw = true;
-            }
-
-            let turn = match num_to_turn(msg.get_turn()) {
-                Ok(turn) => turn,
-                Err(e) => {
-                    eprintln!("Received invalid turn state: {}", e);
-                    self.turn
-                },
-            };
-            if turn != self.turn {
-                self.turn = turn;
-                redraw = true;
-            }
-
-            if redraw {
-                self.recalc_stats();
-            }
-        }
-        redraw
-    }
-
-    fn client_handle_rx_msg_playerlist(&mut self, msg: &MsgPlayerList) {
-        let total_count = msg.get_total_count();
-        if total_count > 1024 {
-            eprintln!("Received PlayerList with too many players: {}", total_count);
-            return;
-        }
-
-        self.room_player_list.resize(total_count as usize,
-                                     || Player::new("<unknown>".to_string(),
-                                                    PlayerMode::Spectator,
-                                                    false));
-
-        let player_name = match msg.get_player_name() {
-            Ok(n) => n,
-            Err(e) => {
-                eprintln!("Received PlayerList with invalid player name: {}", e);
-                return;
-            }
-        };
-        let player_mode = match num_to_player_mode(msg.get_player_mode()) {
-            Ok(m) => m,
-            Err(e) => {
-                eprintln!("Received PlayerList with invalid player mode '{}': {}",
-                          msg.get_player_mode(), e);
-                return;
-            },
-        };
-        let is_self = player_name == self.player_name;
-
-        self.room_player_list.set_player(msg.get_index() as usize,
-                                         Player::new(player_name,
-                                                     player_mode,
-                                                     is_self));
-    }
-
-    fn client_handle_rx_messages(&mut self, messages: Vec<Box<dyn Message>>) -> bool {
-        let mut redraw = false;
-        for message in &messages {
-            let message = message.get_message();
-
-            match message {
-                MsgType::Nop(_) |
-                MsgType::Result(_) |
-                MsgType::Ping(_) |
-                MsgType::Pong(_) |
-                MsgType::Join(_) |
-                MsgType::Leave(_) |
-                MsgType::Reset(_) |
-                MsgType::ReqGameState(_) |
-                MsgType::ReqPlayerList(_) |
-                MsgType::Move(_) => {
-                    // Ignore.
-                },
-                MsgType::GameState(msg) => {
-                    if self.client_handle_rx_msg_gamestate(msg) {
-                        redraw = true;
-                    }
-                },
-                MsgType::PlayerList(msg) => {
-                    self.client_handle_rx_msg_playerlist(msg);
-                },
-            }
-        }
-
-        if let Some(client) = self.client.as_mut() {
-            client.send_request_playerlist().ok();
-            client.send_request_gamestate().ok();
-        }
-        redraw
-    }
-
-    /// Poll the game server state.
-    pub fn poll_server(&mut self) -> bool {
-        if let Some(client) = self.client.as_mut() {
-            if let Some(messages) = client.poll() {
-                self.client_handle_rx_messages(messages);
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-
-    /// Connect to a game server.
-    fn connect(&mut self,
-               addr: String,
-               room_name: &str,
-               player_name: &str,
-               player_mode: PlayerMode) -> ah::Result<()> {
-        println!("Connecting to server {} ...", addr);
-        let mut client = Client::new(addr)?;
-        client.send_ping()?;
-        client.send_nop()?;
-        println!("Joining room '{}' ...", &room_name);
-        client.send_join(room_name, player_name, player_mode)?;
-        client.send_request_gamestate()?;
-        self.fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
-        self.client = Some(client);
-        Ok(())
-    }
-
-    fn disconnect(&mut self) {
-        if let Some(client) = self.client.take() {
-            client.disconnect();
-        }
     }
 
     /// Get statistics.
@@ -790,20 +589,6 @@ impl GameState {
         self.print_turn();
     }
 
-    fn move_pick_send_client(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PICK,
-                                                   token_id,
-                                                   pos.x as u32,
-                                                   pos.y as u32) {
-                let msg = format!("Move-pick failed on server: {}", e);
-                eprintln!("{}", msg);
-                return Err(ah::format_err!("{}", msg));
-            }
-        }
-        Ok(())
-    }
-
     /// Start a move operation.
     pub fn move_pick(&mut self, pos: Coord) -> ah::Result<()> {
         if pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT {
@@ -826,13 +611,13 @@ impl GameState {
                 Err(ah::format_err!("move_pick: Move from empty field."))
             },
             FieldState::Wolf => {
-                self.move_pick_send_client(pos, MSG_MOVE_TOKEN_WOLF)?;
+                self.client_send_move_pick(pos, MSG_MOVE_TOKEN_WOLF)?;
                 self.moving = MoveState::Wolf(pos);
                 self.set_field_state(pos, FieldState::Wolf);
                 Ok(())
             },
             FieldState::Sheep => {
-                self.move_pick_send_client(pos, MSG_MOVE_TOKEN_SHEEP)?;
+                self.client_send_move_pick(pos, MSG_MOVE_TOKEN_SHEEP)?;
                 self.moving = MoveState::Sheep(pos);
                 self.set_field_state(pos, FieldState::Sheep);
                 Ok(())
@@ -858,21 +643,6 @@ impl GameState {
         }
         self.next_turn();
         self.moving = MoveState::NoMove;
-    }
-
-    /// Send the move-put to the server.
-    fn move_put_send_client(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PUT,
-                                                   token_id,
-                                                   pos.x as u32,
-                                                   pos.y as u32) {
-                let msg = format!("Move failed on server: {}", e);
-                eprintln!("{}", msg);
-                return Err(ah::format_err!("{}", msg));
-            }
-        }
-        Ok(())
     }
 
     /// End a move operation.
@@ -903,12 +673,12 @@ impl GameState {
                     ValidationResult::Invalid =>
                         Err(ah::format_err!("move_put: Invalid move.")),
                     ValidationResult::Valid => {
-                        self.move_put_send_client(pos, token_id)?;
+                        self.client_send_move_put(pos, token_id)?;
                         self.do_move_put(pos);
                         Ok(())
                     },
                     ValidationResult::ValidBeat(beat_pos) => {
-                        self.move_put_send_client(pos, token_id)?;
+                        self.client_send_move_put(pos, token_id)?;
                         self.beat(from_pos, pos, beat_pos);
                         self.do_move_put(pos);
                         Ok(())
@@ -935,15 +705,7 @@ impl GameState {
             MoveState::Sheep(coord) => {
                 self.moving = MoveState::NoMove;
                 self.i_am_moving = false;
-
-                if let Some(client) = self.client.as_mut() {
-                    if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_ABORT,
-                                                           MSG_MOVE_TOKEN_CURRENT,
-                                                           coord.x as u32,
-                                                           coord.y as u32) {
-                        eprintln!("Move-abort failed on server: {}", e);
-                    }
-                }
+                self.client_send_move_abort(coord).ok();
             },
         }
     }
@@ -952,6 +714,264 @@ impl GameState {
 impl Drop for GameState {
     fn drop(&mut self) {
         self.disconnect();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Client interface.
+//////////////////////////////////////////////////////////////////////////////
+
+impl GameState {
+    fn client_handle_rx_msg_gamestate(&mut self, msg: &MsgGameState) -> bool {
+        let mut redraw = false;
+
+        if !self.i_am_moving {
+            for coord in BoardIterator::new() {
+                let x = coord.x as usize;
+                let y = coord.y as usize;
+                let field = match num_to_field_state(msg.get_fields()[y][x]) {
+                    Ok(field) => field,
+                    Err(e) => {
+                        eprintln!("Received invalid field state: {}", e);
+                        self.fields[y][x]
+                    },
+                };
+                if field != self.fields[y][x] {
+                    self.fields[y][x] = field;
+                    redraw = true;
+                }
+            }
+
+            let moving = match num_to_move_state(msg.get_moving()) {
+                Ok(moving) => moving,
+                Err(e) => {
+                    eprintln!("Received invalid moving state: {}", e);
+                    self.moving
+                },
+            };
+            if moving != self.moving {
+                self.moving = moving;
+                redraw = true;
+            }
+
+            let turn = match num_to_turn(msg.get_turn()) {
+                Ok(turn) => turn,
+                Err(e) => {
+                    eprintln!("Received invalid turn state: {}", e);
+                    self.turn
+                },
+            };
+            if turn != self.turn {
+                self.turn = turn;
+                redraw = true;
+            }
+
+            if redraw {
+                self.recalc_stats();
+            }
+        }
+        redraw
+    }
+
+    fn client_handle_rx_msg_playerlist(&mut self, msg: &MsgPlayerList) {
+        let total_count = msg.get_total_count();
+        if total_count > 1024 {
+            eprintln!("Received PlayerList with too many players: {}", total_count);
+            return;
+        }
+
+        self.room_player_list.resize(total_count as usize,
+                                     || Player::new("<unknown>".to_string(),
+                                                    PlayerMode::Spectator,
+                                                    false));
+
+        let player_name = match msg.get_player_name() {
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("Received PlayerList with invalid player name: {}", e);
+                return;
+            }
+        };
+        let player_mode = match num_to_player_mode(msg.get_player_mode()) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("Received PlayerList with invalid player mode '{}': {}",
+                          msg.get_player_mode(), e);
+                return;
+            },
+        };
+        let is_self = player_name == self.player_name;
+
+        self.room_player_list.set_player(msg.get_index() as usize,
+                                         Player::new(player_name,
+                                                     player_mode,
+                                                     is_self));
+    }
+
+    fn client_handle_rx_messages(&mut self, messages: Vec<Box<dyn Message>>) -> bool {
+        let mut redraw = false;
+        for message in &messages {
+            let message = message.get_message();
+
+            match message {
+                MsgType::Nop(_) |
+                MsgType::Result(_) |
+                MsgType::Ping(_) |
+                MsgType::Pong(_) |
+                MsgType::Join(_) |
+                MsgType::Leave(_) |
+                MsgType::Reset(_) |
+                MsgType::ReqGameState(_) |
+                MsgType::ReqPlayerList(_) |
+                MsgType::Move(_) => {
+                    // Ignore.
+                },
+                MsgType::GameState(msg) => {
+                    if self.client_handle_rx_msg_gamestate(msg) {
+                        redraw = true;
+                    }
+                },
+                MsgType::PlayerList(msg) => {
+                    self.client_handle_rx_msg_playerlist(msg);
+                },
+            }
+        }
+
+        if let Some(client) = self.client.as_mut() {
+            client.send_request_playerlist().ok();
+            client.send_request_gamestate().ok();
+        }
+        redraw
+    }
+
+    /// Poll the game server state.
+    pub fn poll_server(&mut self) -> bool {
+        if let Some(client) = self.client.as_mut() {
+            if let Some(messages) = client.poll() {
+                self.client_handle_rx_messages(messages);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Connect to a game server.
+    fn connect(&mut self,
+               addr: String,
+               room_name: &str,
+               player_name: &str,
+               player_mode: PlayerMode) -> ah::Result<()> {
+        println!("Connecting to server {} ...", addr);
+        let mut client = Client::new(addr)?;
+        client.send_ping()?;
+        client.send_nop()?;
+        println!("Joining room '{}' ...", &room_name);
+        client.send_join(room_name, player_name, player_mode)?;
+        client.send_request_gamestate()?;
+        self.fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
+        self.client = Some(client);
+        Ok(())
+    }
+
+    fn disconnect(&mut self) {
+        if let Some(client) = self.client.take() {
+            client.disconnect();
+        }
+    }
+
+    fn client_send_reset_game(&mut self) {
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_reset() {
+                eprintln!("Failed to game-reset: {}", e);
+            }
+        }
+    }
+
+    /// Send the move-pick to the server.
+    fn client_send_move_pick(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PICK,
+                                                   token_id,
+                                                   pos.x as u32,
+                                                   pos.y as u32) {
+                let msg = format!("Move-pick failed on server: {}", e);
+                eprintln!("{}", msg);
+                return Err(ah::format_err!("{}", msg));
+            }
+        }
+        Ok(())
+    }
+
+    /// Send the move-put to the server.
+    fn client_send_move_put(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PUT,
+                                                   token_id,
+                                                   pos.x as u32,
+                                                   pos.y as u32) {
+                let msg = format!("Move failed on server: {}", e);
+                eprintln!("{}", msg);
+                return Err(ah::format_err!("{}", msg));
+            }
+        }
+        Ok(())
+    }
+
+    /// Send the move-abort to the server.
+    fn client_send_move_abort(&mut self, pos: Coord) -> ah::Result<()> {
+        if let Some(client) = self.client.as_mut() {
+            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_ABORT,
+                                                   MSG_MOVE_TOKEN_CURRENT,
+                                                   pos.x as u32,
+                                                   pos.y as u32) {
+                eprintln!("Move-abort failed on server: {}", e);
+            }
+        }
+        Ok(())
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Server interface.
+//////////////////////////////////////////////////////////////////////////////
+
+impl GameState {
+    pub fn make_state_message(&self) -> MsgGameState {
+        let mut fields = [[field_state_to_num(FieldState::Unused);
+                           BOARD_WIDTH as usize];
+                          BOARD_HEIGHT as usize];
+        for coord in BoardIterator::new() {
+            let x = coord.x as usize;
+            let y = coord.y as usize;
+            fields[y][x] = field_state_to_num(self.fields[y][x]);
+        }
+        let (moving_state, moving_x, moving_y) = move_state_to_num(&self.moving);
+        let turn = turn_to_num(&self.turn);
+        MsgGameState::new(fields, moving_state, moving_x, moving_y, turn)
+    }
+
+    pub fn server_handle_rx_msg_move(&mut self, msg: &MsgMove) -> ah::Result<()> {
+        match msg.get_action() {
+            (MSG_MOVE_ACTION_PICK, x, y) => {
+                self.move_pick(coord!(x as i16, y as i16))?;
+            },
+            (MSG_MOVE_ACTION_MOVE, _x, _y) => {
+                //TODO
+            },
+            (MSG_MOVE_ACTION_PUT, x, y) => {
+                self.move_put(coord!(x as i16, y as i16))?;
+            },
+            (MSG_MOVE_ACTION_ABORT, _x, _y) => {
+                self.move_abort();
+            },
+            (action, _, _) => {
+                eprintln!("Received invalid move action: {}", action);
+            },
+        }
+        Ok(())
     }
 }
 
