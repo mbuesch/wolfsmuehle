@@ -223,7 +223,7 @@ impl MsgHeader {
         self.sequence = sequence;
     }
 
-    fn from_bytes(data: &[u8]) -> ah::Result<(usize, MsgHeader)> {
+    pub fn from_bytes(data: &[u8]) -> ah::Result<(usize, MsgHeader)> {
         if data.len() >= MSG_HEADER_SIZE as usize {
             let mut offset = 0;
             let magic = u32::from_net(&data[offset..])?;
@@ -257,7 +257,7 @@ impl MsgHeader {
         }
     }
 
-    fn to_bytes(&self, data: &mut Vec<u8>) {
+    pub fn to_bytes(&self, data: &mut Vec<u8>) {
         let initial_len = data.len();
         data.extend_from_slice(&self.magic.to_net());
         data.extend_from_slice(&self.size.to_net());
@@ -291,7 +291,7 @@ macro_rules! define_trivial_message {
                 }
             }
 
-            fn from_bytes(header: MsgHeader, _data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+            pub fn from_bytes(header: MsgHeader, _data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
                 Ok((0, Box::new($struct_name { header, })))
             }
         }
@@ -357,7 +357,7 @@ impl MsgResult {
         })
     }
 
-    fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+    pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
         if data.len() >= (MSG_RESULT_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
@@ -456,7 +456,7 @@ impl MsgJoin {
         })
     }
 
-    fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+    pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
         if data.len() >= (MSG_JOIN_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
@@ -548,7 +548,7 @@ impl MsgGameState {
         }
     }
 
-    fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+    pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
         if data.len() >= (MSG_GAME_STATE_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
@@ -653,7 +653,7 @@ impl MsgPlayerList {
         })
     }
 
-    fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+    pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
         if data.len() >= (MSG_PLAYER_LIST_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
@@ -754,7 +754,7 @@ impl MsgMove {
         }
     }
 
-    fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+    pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
         if data.len() >= (MSG_MOVE_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
 
