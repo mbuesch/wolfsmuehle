@@ -40,7 +40,7 @@ use crate::player::{
     num_to_player_mode,
     player_mode_to_num,
 };
-use crate::protocol::{
+use crate::net::protocol::{
     MSG_BUFFER_SIZE,
     MSG_RESULT_NOK,
     MSG_RESULT_OK,

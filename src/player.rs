@@ -18,7 +18,7 @@
 //
 
 use anyhow as ah;
-use crate::protocol::{
+use crate::net::protocol::{
     MSG_PLAYERMODE_SPECTATOR,
     MSG_PLAYERMODE_WOLF,
     MSG_PLAYERMODE_SHEEP,

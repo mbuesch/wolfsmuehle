@@ -22,7 +22,7 @@ use crate::board::{
     BOARD_WIDTH,
     BOARD_HEIGHT,
 };
-use crate::byteorder::{ToNet32, FromNet32};
+use crate::net::data_repr::{ToNet32, FromNet32};
 
 pub const MSG_BUFFER_SIZE: usize    = 0x1000;
 

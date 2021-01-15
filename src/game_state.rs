@@ -27,7 +27,23 @@ use crate::board::{
     coord_is_on_board,
     is_on_main_diag,
 };
-use crate::client::Client;
+use crate::net::{
+    client::Client,
+    protocol::{
+        MSG_MOVE_ACTION_ABORT,
+        MSG_MOVE_ACTION_MOVE,
+        MSG_MOVE_ACTION_PICK,
+        MSG_MOVE_ACTION_PUT,
+        MSG_MOVE_TOKEN_CURRENT,
+        MSG_MOVE_TOKEN_SHEEP,
+        MSG_MOVE_TOKEN_WOLF,
+        Message,
+        MsgGameState,
+        MsgMove,
+        MsgPlayerList,
+        MsgType,
+    },
+};
 use crate::coord::{
     Coord,
     CoordAxis,
@@ -40,20 +56,6 @@ use crate::player::{
     num_to_player_mode,
 };
 use crate::random::random_alphanum;
-use crate::protocol::{
-    MSG_MOVE_ACTION_ABORT,
-    MSG_MOVE_ACTION_MOVE,
-    MSG_MOVE_ACTION_PICK,
-    MSG_MOVE_ACTION_PUT,
-    MSG_MOVE_TOKEN_CURRENT,
-    MSG_MOVE_TOKEN_SHEEP,
-    MSG_MOVE_TOKEN_WOLF,
-    Message,
-    MsgGameState,
-    MsgMove,
-    MsgPlayerList,
-    MsgType,
-};
 use std::fmt;
 
 const PRINT_STATE: bool = true;

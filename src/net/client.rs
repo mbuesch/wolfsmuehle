@@ -31,7 +31,7 @@ use crate::player::{
     PlayerMode,
     player_mode_to_num,
 };
-use crate::protocol::{
+use crate::net::protocol::{
     MSG_BUFFER_SIZE,
     Message,
     MsgJoin,

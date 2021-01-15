@@ -18,27 +18,22 @@
 //
 
 mod board;
-mod byteorder;
-#[cfg(feature="server")]
-mod client;
 mod coord;
 mod game_state;
 mod gtk_helpers;
 #[cfg(feature="gui")]
 mod main_window;
+#[cfg(feature="server")]
+mod net;
 mod player;
-#[cfg(feature="server")]
-mod protocol;
 mod random;
-#[cfg(feature="server")]
-mod server;
 
 use anyhow as ah;
 #[cfg(feature="gui")]
 use crate::main_window::MainWindow;
 use crate::player::PlayerMode;
 #[cfg(feature="server")]
-use crate::server::Server;
+use crate::net::server::Server;
 #[cfg(feature="gui")]
 use expect_exit::{ExpectedWithError, exit};
 #[cfg(feature="gui")]
