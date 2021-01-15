@@ -25,9 +25,19 @@ pub trait ToNet32 {
     fn to_net(&self) -> [u8; 4];
 }
 
+pub trait ToNetStr {
+    /// Convert to network byte format.
+    fn to_net(&self, bytes: &mut [u8], truncate: bool) -> ah::Result<()>;
+}
+
 pub trait FromNet32 {
     /// Convert from network byte order.
     fn from_net(data: &[u8]) -> ah::Result<u32>;
+}
+
+pub trait FromNetStr {
+    /// Convert from network byte format.
+    fn from_net(bytes: &[u8], lossy: bool) -> ah::Result<String>;
 }
 
 impl ToNet32 for u32 {
@@ -42,6 +52,38 @@ impl FromNet32 for u32 {
             Ok(u32::from_be_bytes(data[0..4].try_into()?))
         } else {
             return Err(ah::format_err!("from_net u32: Not enough data."))
+        }
+    }
+}
+
+impl ToNetStr for str {
+    fn to_net(&self, bytes: &mut [u8], truncate: bool) -> ah::Result<()> {
+        let mut len = self.as_bytes().len();
+        if len > bytes.len() {
+            if !truncate {
+                return Err(ah::format_err!("to_net str: String is too long."));
+            }
+            len = bytes.len()
+        }
+        bytes[0..len].copy_from_slice(&self.as_bytes());
+        Ok(())
+    }
+}
+
+impl FromNetStr for String {
+    fn from_net(bytes: &[u8], lossy: bool) -> ah::Result<String> {
+        // Remove trailing zeros.
+        let mut len = bytes.len();
+        for i in (0..bytes.len()).rev() {
+            if bytes[i] != 0 {
+                break;
+            }
+            len -= 1;
+        }
+        if lossy {
+            Ok(String::from_utf8_lossy(&bytes[0..len]).to_string())
+        } else {
+            Ok(String::from_utf8(bytes[0..len].to_vec())?)
         }
     }
 }

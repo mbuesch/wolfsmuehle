@@ -22,7 +22,12 @@ use crate::board::{
     BOARD_WIDTH,
     BOARD_HEIGHT,
 };
-use crate::net::data_repr::{ToNet32, FromNet32};
+use crate::net::data_repr::{
+    FromNet32,
+    FromNetStr,
+    ToNet32,
+    ToNetStr,
+};
 
 pub const MSG_BUFFER_SIZE: usize    = 0x1000;
 
@@ -48,34 +53,6 @@ const MSG_ID_GAMESTATE: u32         = 8;
 const MSG_ID_REQPLAYERLIST: u32     = 9;
 const MSG_ID_PLAYERLIST: u32        = 10;
 const MSG_ID_MOVE: u32              = 11;
-
-fn str2bytes(bytes: &mut [u8], string: &str, truncate: bool) -> ah::Result<()> {
-    let mut len = string.as_bytes().len();
-    if len > bytes.len() {
-        if !truncate {
-            return Err(ah::format_err!("str2bytes: String is too long."));
-        }
-        len = bytes.len()
-    }
-    bytes[0..len].copy_from_slice(&string.as_bytes());
-    Ok(())
-}
-
-fn bytes2string(bytes: &[u8], lossy: bool) -> ah::Result<String> {
-    // Remove trailing zeros.
-    let mut len = bytes.len();
-    for i in (0..bytes.len()).rev() {
-        if bytes[i] != 0 {
-            break;
-        }
-        len -= 1;
-    }
-    if lossy {
-        Ok(String::from_utf8_lossy(&bytes[0..len]).to_string())
-    } else {
-        Ok(String::from_utf8(bytes[0..len].to_vec())?)
-    }
-}
 
 type FieldsArray = [[u32; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 
@@ -368,7 +345,7 @@ impl MsgResult {
                result_code:     u32,
                message:         &str) -> ah::Result<MsgResult> {
         let mut message_bytes = [0; MSG_RESULT_MAXMSGLEN];
-        str2bytes(&mut message_bytes, message, true).ok();
+        message.to_net(&mut message_bytes, true).ok();
         Ok(MsgResult {
             header:         MsgHeader::new(MSG_MAGIC,
                                            MSG_RESULT_SIZE,
@@ -422,7 +399,7 @@ impl MsgResult {
     }
 
     pub fn get_text(&self) -> String {
-        match bytes2string(&self.message, true) {
+        match String::from_net(&self.message, true) {
             Ok(m) => m,
             Err(_) => "Failed to parse MsgResult.".to_string(),
         }
@@ -465,9 +442,9 @@ impl MsgJoin {
                player_name: &str,
                player_mode: u32) -> ah::Result<MsgJoin> {
         let mut room_name_bytes = [0; MSG_MAXROOMNAME];
-        str2bytes(&mut room_name_bytes, room_name, false)?;
+        room_name.to_net(&mut room_name_bytes, false)?;
         let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
-        str2bytes(&mut player_name_bytes, player_name, false)?;
+        player_name.to_net(&mut player_name_bytes, false)?;
         Ok(MsgJoin {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_JOIN_SIZE,
@@ -506,11 +483,11 @@ impl MsgJoin {
     }
 
     pub fn get_room_name(&self) -> ah::Result<String> {
-        bytes2string(&self.room_name, false)
+        String::from_net(&self.room_name, false)
     }
 
     pub fn get_player_name(&self) -> ah::Result<String> {
-        bytes2string(&self.player_name, false)
+        String::from_net(&self.player_name, false)
     }
 
     pub fn get_player_mode(&self) -> u32 {
@@ -663,7 +640,7 @@ impl MsgPlayerList {
                player_name: &str,
                player_mode: u32) -> ah::Result<MsgPlayerList> {
         let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
-        str2bytes(&mut player_name_bytes, player_name, false)?;
+        player_name.to_net(&mut player_name_bytes, false)?;
         Ok(MsgPlayerList {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_PLAYER_LIST_SIZE,
@@ -713,7 +690,7 @@ impl MsgPlayerList {
     }
 
     pub fn get_player_name(&self) -> ah::Result<String> {
-        bytes2string(&self.player_name, false)
+        String::from_net(&self.player_name, false)
     }
 
     pub fn get_player_mode(&self) -> u32 {
