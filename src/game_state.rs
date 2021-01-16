@@ -209,6 +209,7 @@ pub struct Stats {
 pub struct GameState {
     player_mode:        PlayerMode,
     player_name:        String,
+    joined_room:        Option<String>,
     room_player_list:   PlayerList,
     fields:             [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
     moving:             MoveState,
@@ -223,9 +224,7 @@ pub struct GameState {
 impl GameState {
     /// Construct a new game state.
     pub fn new(player_mode:         PlayerMode,
-               player_name:         Option<String>,
-               connect_to_server:   Option<String>,
-               room_name:           String)
+               player_name:         Option<String>)
                -> ah::Result<GameState> {
 
         let fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
@@ -245,6 +244,7 @@ impl GameState {
         let mut game = GameState {
             player_mode,
             player_name,
+            joined_room:        None,
             room_player_list,
             fields,
             moving:             MoveState::NoMove,
@@ -256,12 +256,6 @@ impl GameState {
             orig_sheep_count:   0,
         };
         game.reset_game(true);
-        if let Some(connect_to_server) = connect_to_server {
-            game.connect(connect_to_server,
-                         &room_name,
-                         &game.player_name.to_string(),
-                         player_mode)?;
-        }
         game.print_turn();
         Ok(game)
     }
@@ -785,7 +779,7 @@ impl GameState {
 
 impl Drop for GameState {
     fn drop(&mut self) {
-        self.disconnect();
+        self.client_disconnect();
     }
 }
 
@@ -855,19 +849,25 @@ impl GameState {
                     // Ignore.
                 },
                 MsgType::GameState(msg) => {
-                    if self.client_handle_rx_msg_gamestate(msg) {
-                        redraw = true;
+                    if self.joined_room.is_some() {
+                        if self.client_handle_rx_msg_gamestate(msg) {
+                            redraw = true;
+                        }
                     }
                 },
                 MsgType::PlayerList(msg) => {
-                    self.client_handle_rx_msg_playerlist(msg);
+                    if self.joined_room.is_some() {
+                        self.client_handle_rx_msg_playerlist(msg);
+                    }
                 },
             }
         }
 
-        if let Some(client) = self.client.as_mut() {
-            client.send_request_playerlist().ok();
-            client.send_request_gamestate().ok();
+        if self.joined_room.is_some() {
+            if let Some(client) = self.client.as_mut() {
+                client.send_request_playerlist().ok();
+                client.send_request_gamestate().ok();
+            }
         }
         redraw
     }
@@ -887,27 +887,39 @@ impl GameState {
     }
 
     /// Connect to a game server.
-    fn connect(&mut self,
-               addr: String,
-               room_name: &str,
-               player_name: &str,
-               player_mode: PlayerMode) -> ah::Result<()> {
+    pub fn client_connect(&mut self, addr: &str) -> ah::Result<()> {
+        self.client_disconnect();
         println!("Connecting to server {} ...", addr);
         let mut client = Client::new(addr)?;
         client.send_ping()?;
         client.send_nop()?;
-        println!("Joining room '{}' ...", &room_name);
-        client.send_join(room_name, player_name, player_mode)?;
-        client.send_request_gamestate()?;
-        self.fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
         self.client = Some(client);
         Ok(())
     }
 
-    fn disconnect(&mut self) {
+    /// Join a room on the server.
+    pub fn client_join_room(&mut self, room_name: &str) -> ah::Result<()> {
+        if let Some(client) = self.client.as_mut() {
+            println!("Joining room '{}' ...", room_name);
+            client.send_join(room_name,
+                             &self.player_name,
+                             self.player_mode)?;
+            client.send_request_gamestate()?;
+            self.fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
+            self.joined_room = Some(room_name.to_string());
+            Ok(())
+        } else {
+            Err(ah::format_err!("Cannot join room. Not connected to a server."))
+        }
+    }
+
+    /// Disconnect from a game server.
+    pub fn client_disconnect(&mut self) {
         if let Some(client) = self.client.take() {
             client.disconnect();
+            println!("Disconnected from server.");
         }
+        self.joined_room = None;
     }
 
     fn client_send_reset_game(&mut self) {

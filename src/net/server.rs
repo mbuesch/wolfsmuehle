@@ -405,9 +405,7 @@ impl ServerRoom {
     fn new(name: String,
            restrict_player_modes: bool) -> ah::Result<ServerRoom> {
         let mut game_state = GameState::new(PlayerMode::Both,
-                                            None, /* no player name */
-                                            None, /* no connect */
-                                            name.to_string())?;
+                                            None)?; /* no player name */
         let player_list = PlayerList::new(vec![]);
         game_state.set_room_player_list(player_list.clone());
         Ok(ServerRoom {
