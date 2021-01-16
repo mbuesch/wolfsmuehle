@@ -218,6 +218,7 @@ pub struct GameState {
     turn:               Turn,
     just_beaten:        Option<Coord>,
     client:             Option<Client>,
+    client_addr:        Option<String>,
     orig_sheep_count:   u8,
 }
 
@@ -253,6 +254,7 @@ impl GameState {
             turn:               Turn::Sheep,
             just_beaten:        None,
             client:             None,
+            client_addr:        None,
             orig_sheep_count:   0,
         };
         game.reset_game(true);
@@ -894,6 +896,7 @@ impl GameState {
         client.send_ping()?;
         client.send_nop()?;
         self.client = Some(client);
+        self.client_addr = Some(addr.to_string());
         Ok(())
     }
 
@@ -917,9 +920,26 @@ impl GameState {
     pub fn client_disconnect(&mut self) {
         if let Some(client) = self.client.take() {
             client.disconnect();
+            self.client_addr = None;
             println!("Disconnected from server.");
         }
         self.joined_room = None;
+    }
+
+    /// Get the address of the connected server, if any.
+    pub fn client_get_addr(&self) -> Option<&str> {
+        match &self.client_addr {
+            None => None,
+            Some(a) => Some(a),
+        }
+    }
+
+    /// Get the name of the joined room, if any.
+    pub fn client_get_joined_room(&self) -> Option<&str> {
+        match &self.joined_room {
+            None => None,
+            Some(r) => Some(r),
+        }
     }
 
     fn client_send_reset_game(&mut self) {

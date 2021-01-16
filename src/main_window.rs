@@ -55,6 +55,7 @@ pub struct MainWindow {
     appwindow:          gtk::ApplicationWindow,
     button_connect:     gtk::MenuItem,
     button_disconnect:  gtk::MenuItem,
+    status_label:       gtk::Label,
     draw:               Rc<RefCell<DrawingArea>>,
     game:               Rc<RefCell<GameState>>,
     player_list_view:   Rc<RefCell<PlayerListView>>,
@@ -74,11 +75,12 @@ impl MainWindow {
         appwindow.set_application(Some(app));
         appwindow.set_title("Wolfsmühle");
 
-        // Menu buttons.
+        // Other widgets.
         let button_connect: gtk::MenuItem = builder.get_object("menubutton_connect").unwrap();
         let button_disconnect: gtk::MenuItem = builder.get_object("menubutton_disconnect").unwrap();
         button_connect.set_sensitive(connect_to_server.is_none());
         button_disconnect.set_sensitive(connect_to_server.is_some());
+        let status_label: gtk::Label = builder.get_object("status_label").unwrap();
 
         // Create game state.
         let game = Rc::new(RefCell::new(GameState::new(player_mode,
@@ -103,6 +105,7 @@ impl MainWindow {
             appwindow,
             button_connect,
             button_disconnect,
+            status_label,
             draw,
             game,
             player_list_view,
@@ -148,6 +151,8 @@ impl MainWindow {
             }
         });
 
+        mainwnd.borrow().update_status();
+
         Ok(mainwnd)
     }
 
@@ -168,6 +173,28 @@ impl MainWindow {
 
     pub fn main_window(&self) -> gtk::ApplicationWindow {
         self.appwindow.clone()
+    }
+
+    /// Update the status bar.
+    fn update_status(&self) {
+        let status = {
+            let game = self.game.borrow();
+            match game.client_get_addr() {
+                None =>
+                    "Local game. Not connected to server.".to_string(),
+                Some(addr) => {
+                    match game.client_get_joined_room() {
+                        None =>
+                            format!("Connected to server '{}' and not in a room.",
+                                    addr),
+                        Some(room) =>
+                            format!("Connected to server '{}' and joined room '{}'.",
+                                    addr, room),
+                    }
+                },
+            }
+        };
+        self.status_label.set_text(&status);
     }
 
     fn about(&self) {
@@ -230,6 +257,8 @@ impl MainWindow {
             }
         }
         dlg.close();
+
+        self.update_status();
     }
 
     fn disconnect_game(&mut self) {
@@ -239,6 +268,8 @@ impl MainWindow {
         self.player_list_view.borrow_mut().clear();
         self.button_connect.set_sensitive(true);
         self.button_disconnect.set_sensitive(false);
+
+        self.update_status();
     }
 
     fn load_game(&mut self) {
