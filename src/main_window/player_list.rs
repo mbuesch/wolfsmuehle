@@ -63,6 +63,10 @@ impl PlayerListView {
             self.displayed_list = player_list.clone();
         }
     }
+
+    pub fn clear(&mut self) {
+        self.update(&PlayerList::new(vec![]));
+    }
 }
 
 // vim: ts=4 sw=4 expandtab
