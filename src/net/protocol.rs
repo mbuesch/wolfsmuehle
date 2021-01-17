@@ -48,11 +48,13 @@ const MSG_ID_PONG: u32              = 3;
 const MSG_ID_JOIN: u32              = 4;
 const MSG_ID_LEAVE: u32             = 5;
 const MSG_ID_RESET: u32             = 6;
-const MSG_ID_REQGAMESTATE: u32      = 7;
-const MSG_ID_GAMESTATE: u32         = 8;
+const MSG_ID_REQROOMLIST: u32       = 7;
+const MSG_ID_ROOMLIST: u32          = 8;
 const MSG_ID_REQPLAYERLIST: u32     = 9;
 const MSG_ID_PLAYERLIST: u32        = 10;
-const MSG_ID_MOVE: u32              = 11;
+const MSG_ID_REQGAMESTATE: u32      = 11;
+const MSG_ID_GAMESTATE: u32         = 12;
+const MSG_ID_MOVE: u32              = 13;
 
 type FieldsArray = [[u32; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 
@@ -65,10 +67,12 @@ pub enum MsgType<'a> {
     Join(&'a MsgJoin),
     Leave(&'a MsgLeave),
     Reset(&'a MsgReset),
-    ReqGameState(&'a MsgReqGameState),
-    GameState(&'a MsgGameState),
+    ReqRoomList(&'a MsgReqRoomList),
+    RoomList(&'a MsgRoomList),
     ReqPlayerList(&'a MsgReqPlayerList),
     PlayerList(&'a MsgPlayerList),
+    ReqGameState(&'a MsgReqGameState),
+    GameState(&'a MsgGameState),
     Move(&'a MsgMove),
 }
 
@@ -144,14 +148,18 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
             MsgLeave::from_bytes(header, &data[offset..])?,
         MSG_ID_RESET =>
             MsgReset::from_bytes(header, &data[offset..])?,
-        MSG_ID_REQGAMESTATE =>
-            MsgReqGameState::from_bytes(header, &data[offset..])?,
-        MSG_ID_GAMESTATE =>
-            MsgGameState::from_bytes(header, &data[offset..])?,
+        MSG_ID_REQROOMLIST =>
+            MsgReqRoomList::from_bytes(header, &data[offset..])?,
+        MSG_ID_ROOMLIST =>
+            MsgRoomList::from_bytes(header, &data[offset..])?,
         MSG_ID_REQPLAYERLIST =>
             MsgReqPlayerList::from_bytes(header, &data[offset..])?,
         MSG_ID_PLAYERLIST =>
             MsgPlayerList::from_bytes(header, &data[offset..])?,
+        MSG_ID_REQGAMESTATE =>
+            MsgReqGameState::from_bytes(header, &data[offset..])?,
+        MSG_ID_GAMESTATE =>
+            MsgGameState::from_bytes(header, &data[offset..])?,
         MSG_ID_MOVE =>
             MsgMove::from_bytes(header, &data[offset..])?,
         _ =>
@@ -314,6 +322,7 @@ define_trivial_message!(MsgPing, Ping, MSG_ID_PING);
 define_trivial_message!(MsgPong, Pong, MSG_ID_PONG);
 define_trivial_message!(MsgLeave, Leave, MSG_ID_LEAVE);
 define_trivial_message!(MsgReset, Reset, MSG_ID_RESET);
+define_trivial_message!(MsgReqRoomList, ReqRoomList, MSG_ID_REQROOMLIST);
 define_trivial_message!(MsgReqPlayerList, ReqPlayerList, MSG_ID_REQPLAYERLIST);
 define_trivial_message!(MsgReqGameState, ReqGameState, MSG_ID_REQGAMESTATE);
 
@@ -612,6 +621,91 @@ impl Message for MsgGameState {
         data.extend_from_slice(&self.moving_y.to_net());
         data.extend_from_slice(&self.turn.to_net());
         assert_eq!(data.len(), MSG_GAME_STATE_SIZE as usize);
+        data
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// MsgRoomList
+//////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug)]
+pub struct MsgRoomList {
+    header:         MsgHeader,
+    total_count:    u32,
+    index:          u32,
+    room_name:      [u8; MSG_MAXROOMNAME],
+}
+
+const MSG_ROOM_LIST_SIZE: u32 = MSG_HEADER_SIZE +
+                                (2 * 4) +
+                                MSG_MAXROOMNAME as u32;
+
+impl MsgRoomList {
+    pub fn new(total_count: u32,
+               index: u32,
+               room_name: &str) -> ah::Result<MsgRoomList> {
+        let mut room_name_bytes = [0; MSG_MAXROOMNAME];
+        room_name.to_net(&mut room_name_bytes, false)?;
+        Ok(MsgRoomList {
+            header:     MsgHeader::new(MSG_MAGIC,
+                                       MSG_ROOM_LIST_SIZE,
+                                       MSG_ID_ROOMLIST,
+                                       0),
+            total_count,
+            index,
+            room_name: room_name_bytes,
+        })
+    }
+
+    pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+        if data.len() >= (MSG_ROOM_LIST_SIZE - MSG_HEADER_SIZE) as usize {
+            let mut offset = 0;
+
+            let total_count = u32::from_net(&data[offset..])?;
+            offset += 4;
+            let index = u32::from_net(&data[offset..])?;
+            offset += 4;
+            let mut room_name = [0; MSG_MAXROOMNAME];
+            room_name.copy_from_slice(&data[offset..offset+MSG_MAXROOMNAME]);
+            offset += MSG_MAXROOMNAME;
+
+            let msg = MsgRoomList {
+                header,
+                total_count,
+                index,
+                room_name,
+            };
+            assert_eq!(offset, (MSG_ROOM_LIST_SIZE - MSG_HEADER_SIZE) as usize);
+            Ok((offset, Box::new(msg)))
+        } else {
+            Err(ah::format_err!("MsgRoomList: Not enough data."))
+        }
+    }
+
+    pub fn get_total_count(&self) -> u32 {
+        self.total_count
+    }
+
+    pub fn get_index(&self) -> u32 {
+        self.index
+    }
+
+    pub fn get_room_name(&self) -> ah::Result<String> {
+        String::from_net(&self.room_name, false)
+    }
+}
+
+impl Message for MsgRoomList {
+    msg_trait_define_common!(RoomList);
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut data = Vec::with_capacity(MSG_ROOM_LIST_SIZE as usize);
+        self.header.to_bytes(&mut data);
+        data.extend_from_slice(&self.total_count.to_net());
+        data.extend_from_slice(&self.index.to_net());
+        data.extend_from_slice(&self.room_name);
+        assert_eq!(data.len(), MSG_ROOM_LIST_SIZE as usize);
         data
     }
 }

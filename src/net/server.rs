@@ -48,6 +48,7 @@ use crate::net::protocol::{
     MsgPlayerList,
     MsgPong,
     MsgResult,
+    MsgRoomList,
     MsgType,
     buffer_skip,
     message_from_bytes,
@@ -280,6 +281,24 @@ impl<'a> ServerInstance<'a> {
             MsgType::Leave(msg) => {
                 self.do_leave();
                 self.send_msg(&mut MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
+            },
+            MsgType::ReqRoomList(msg) => {
+                let mut room_names = vec![];
+                {
+                    let rooms = self.rooms.lock().unwrap();
+                    for room in rooms.iter() {
+                        room_names.push(room.get_name().to_string());
+                    }
+                }
+                for (i, room_name) in room_names.iter().enumerate() {
+                    self.send_msg(&mut MsgRoomList::new(room_names.len() as u32,
+                                                        i as u32,
+                                                        &room_name)?)?;
+                }
+            },
+            MsgType::RoomList(msg) => {
+                self.send_msg(&mut MsgResult::new(msg, MSG_RESULT_NOK,
+                                                  "Cannot change room list.")?)?;
             },
             MsgType::Reset(_) |
             MsgType::ReqGameState(_) |
