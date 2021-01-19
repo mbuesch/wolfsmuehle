@@ -112,6 +112,10 @@ impl PlayerList {
         self.players.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.count() == 0
+    }
+
     pub fn resize<F>(&mut self, new_size: usize, new_item: F)
     where
         F: Fn() -> Player,
