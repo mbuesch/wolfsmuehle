@@ -30,6 +30,52 @@ macro_rules! gsigparam {
     }
 }
 
+#[macro_export]
+macro_rules! gsignal_connect_to {
+    ($instance:ident, $method:ident, $error_return:expr) => {
+        Box::new(move |param| {
+            match $instance.try_borrow() {
+                Ok(inst) => inst.$method(param),
+                Err(_) => $error_return,
+            }
+        })
+    }
+}
+
+#[macro_export]
+macro_rules! gsignal_connect_to_mut {
+    ($instance:ident, $method:ident, $error_return:expr) => {
+        Box::new(move |param| {
+            match $instance.try_borrow_mut() {
+                Ok(mut inst) => inst.$method(param),
+                Err(_) => $error_return,
+            }
+        })
+    }
+}
+
 pub type GSigHandler = Box<dyn Fn(&[glib::Value]) -> Option<glib::Value> + 'static>;
+
+pub fn messagebox_info<T: glib::IsA<gtk::Window>>(parent: Option<&T>,
+                                                  text: &str) {
+    let msg = gtk::MessageDialog::new(parent,
+                                      gtk::DialogFlags::MODAL,
+                                      gtk::MessageType::Info,
+                                      gtk::ButtonsType::Ok,
+                                      text);
+    msg.connect_response(|msg, _resp| msg.close());
+    msg.run();
+}
+
+pub fn messagebox_error<T: glib::IsA<gtk::Window>>(parent: Option<&T>,
+                                                   text: &str) {
+    let msg = gtk::MessageDialog::new(parent,
+                                      gtk::DialogFlags::MODAL,
+                                      gtk::MessageType::Error,
+                                      gtk::ButtonsType::Ok,
+                                      text);
+    msg.connect_response(|msg, _resp| msg.close());
+    msg.run();
+}
 
 // vim: ts=4 sw=4 expandtab
