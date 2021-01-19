@@ -25,7 +25,7 @@ use drawing_area::DrawingArea;
 
 use anyhow as ah;
 use crate::game_state::GameState;
-use crate::gsigparam;
+use crate::gsignal_connect_to_mut;
 use crate::gtk_helpers::*;
 use crate::player::PlayerMode;
 use expect_exit::exit_unwind;
@@ -52,13 +52,13 @@ const ABOUT_TEXT: &str =
      51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.";
 
 pub struct MainWindow {
-    appwindow:          gtk::ApplicationWindow,
-    button_connect:     gtk::MenuItem,
-    button_disconnect:  gtk::MenuItem,
-    status_label:       gtk::Label,
-    draw:               Rc<RefCell<DrawingArea>>,
-    game:               Rc<RefCell<GameState>>,
-    player_list_view:   Rc<RefCell<PlayerListView>>,
+    appwindow:              gtk::ApplicationWindow,
+    button_connect:         gtk::MenuItem,
+    button_disconnect:      gtk::MenuItem,
+    status_label:           gtk::Label,
+    draw:                   Rc<RefCell<DrawingArea>>,
+    game:                   Rc<RefCell<GameState>>,
+    player_list_view:       Rc<RefCell<PlayerListView>>,
 }
 
 impl MainWindow {
@@ -93,8 +93,13 @@ impl MainWindow {
 
         // Create player state area.
         let player_tree: gtk::TreeView = builder.get_object("player_tree").unwrap();
+        let player_name_entry: gtk::Entry = builder.get_object("player_name_entry").unwrap();
+        let player_mode_combo: gtk::ComboBoxText = builder.get_object("player_mode_combo").unwrap();
         let player_list_view = Rc::new(RefCell::new(
-            PlayerListView::new(player_tree)));
+            PlayerListView::new(Rc::clone(&game),
+                                player_tree,
+                                player_name_entry,
+                                player_mode_combo)));
 
         // Create drawing area.
         let draw = Rc::new(RefCell::new(DrawingArea::new(
@@ -113,7 +118,7 @@ impl MainWindow {
 
         // Create game polling timer.
         let mainwnd2 = Rc::clone(&mainwnd);
-        glib::timeout_add_local(100, move || {
+        glib::timeout_add_local(200, move || {
             if let Ok(mut mw) = mainwnd2.try_borrow_mut() {
                 mw.poll_timer();
             }
@@ -123,27 +128,35 @@ impl MainWindow {
         // Connect signals.
         let mainwnd2 = Rc::clone(&mainwnd);
         let draw2 = Rc::clone(&mainwnd.borrow().draw);
+        let player_list_view2 = Rc::clone(&mainwnd.borrow().player_list_view);
         builder.connect_signals(move |_builder, handler_name| {
             let mainwnd2 = Rc::clone(&mainwnd2);
+            let player_list_view2 = Rc::clone(&player_list_view2);
+
             match DrawingArea::connect_signals(Rc::clone(&draw2), handler_name) {
                 Some(handler) => return handler,
                 None => (),
             }
+            match PlayerListView::connect_signals(Rc::clone(&player_list_view2), handler_name) {
+                Some(handler) => return handler,
+                None => (),
+            }
+
             match handler_name {
                 "handler_resetgame" =>
-                    Box::new(move |p| mainwnd2.borrow_mut().gsignal_resetgame(p)),
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_resetgame, None),
                 "handler_loadgame" =>
-                    Box::new(move |p| mainwnd2.borrow_mut().gsignal_loadgame(p)),
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_loadgame, None),
                 "handler_savegame" =>
-                    Box::new(move |p| mainwnd2.borrow_mut().gsignal_savegame(p)),
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_savegame, None),
                 "handler_connect" =>
-                    Box::new(move |p| mainwnd2.borrow_mut().gsignal_connect(p)),
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_connect, None),
                 "handler_disconnect" =>
-                    Box::new(move |p| mainwnd2.borrow_mut().gsignal_disconnect(p)),
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_disconnect, None),
                 "handler_about" =>
-                    Box::new(move |p| mainwnd2.borrow_mut().gsignal_about(p)),
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_about, None),
                 "handler_quit" =>
-                    Box::new(move |p| mainwnd2.borrow_mut().gsignal_quit(p)),
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_quit, None),
                 name => {
                     eprintln!("Unhandled signal: {}", name);
                     Box::new(|_| None)
@@ -162,13 +175,18 @@ impl MainWindow {
                 if let Ok(mut player_list_view) = self.player_list_view.try_borrow_mut() {
 
                     let redraw = game.poll_server();
-                    player_list_view.update(game.get_room_player_list());
+                    if game.client_get_joined_room().is_none() {
+                        player_list_view.clear_player_list();
+                    } else {
+                        player_list_view.update(game.get_room_player_list());
+                    }
                     if redraw {
                         draw.redraw();
                     }
                 }
             }
         }
+        self.update_status();
     }
 
     pub fn main_window(&self) -> gtk::ApplicationWindow {
@@ -177,34 +195,32 @@ impl MainWindow {
 
     /// Update the status bar.
     fn update_status(&self) {
-        let status = {
-            let game = self.game.borrow();
+        let mut status = None;
+
+        if let Ok(game) = self.game.try_borrow() {
             match game.client_get_addr() {
                 None =>
-                    "Local game. Not connected to server.".to_string(),
+                    status = Some("Local game. Not connected to server.".to_string()),
                 Some(addr) => {
                     match game.client_get_joined_room() {
                         None =>
-                            format!("Connected to server '{}' and not in a room.",
-                                    addr),
+                            status = Some(format!("Connected to '{}' and not in a room.",
+                                                  addr)),
                         Some(room) =>
-                            format!("Connected to server '{}' and joined room '{}'.",
-                                    addr, room),
+                            status = Some(format!("Connected to '{}' in room '{}'.",
+                                                  addr, room)),
                     }
                 },
             }
-        };
-        self.status_label.set_text(&status);
+        }
+
+        if let Some(status) = status {
+            self.status_label.set_text(&status);
+        }
     }
 
     fn about(&self) {
-        let msg = gtk::MessageDialog::new(Some(&self.appwindow),
-                                          gtk::DialogFlags::MODAL,
-                                          gtk::MessageType::Info,
-                                          gtk::ButtonsType::Ok,
-                                          ABOUT_TEXT);
-        msg.connect_response(|msg, _resp| msg.close());
-        msg.run();
+        messagebox_info(Some(&self.appwindow), ABOUT_TEXT);
     }
 
     fn connect_game(&mut self) {
@@ -242,16 +258,10 @@ impl MainWindow {
 
             let result = self.game.borrow_mut().client_connect(&addr);
             if let Err(e) = result {
-                let text = format!("Failed to connect to server:\n{}", e);
-                let msg = gtk::MessageDialog::new(Some(&dlg),
-                                                  gtk::DialogFlags::MODAL,
-                                                  gtk::MessageType::Error,
-                                                  gtk::ButtonsType::Ok,
-                                                  &text);
-                msg.connect_response(|msg, _resp| msg.close());
-                msg.run();
+                messagebox_error(Some(&dlg),
+                                 &format!("Failed to connect to server:\n{}", e));
             } else {
-                self.player_list_view.borrow_mut().clear();
+                self.player_list_view.borrow_mut().clear_player_list();
                 self.button_connect.set_sensitive(false);
                 self.button_disconnect.set_sensitive(true);
             }
@@ -265,7 +275,7 @@ impl MainWindow {
         self.game.borrow_mut().client_disconnect();
 
         self.draw.borrow_mut().reset_game();
-        self.player_list_view.borrow_mut().clear();
+        self.player_list_view.borrow_mut().clear_player_list();
         self.button_connect.set_sensitive(true);
         self.button_disconnect.set_sensitive(false);
 
@@ -287,14 +297,8 @@ impl MainWindow {
             }
         }
         if let Some(e) = err {
-            let text = format!("Failed to load game:\n{}", e);
-            let msg = gtk::MessageDialog::new(Some(&dlg),
-                                              gtk::DialogFlags::MODAL,
-                                              gtk::MessageType::Error,
-                                              gtk::ButtonsType::Ok,
-                                              &text);
-            msg.connect_response(|msg, _resp| msg.close());
-            msg.run();
+            messagebox_error(Some(&dlg),
+                             &format!("Failed to load game:\n{}", e));
         }
         dlg.close();
     }
@@ -314,55 +318,42 @@ impl MainWindow {
             }
         }
         if let Some(e) = err {
-            let text = format!("Failed to save game:\n{}", e);
-            let msg = gtk::MessageDialog::new(Some(&dlg),
-                                              gtk::DialogFlags::MODAL,
-                                              gtk::MessageType::Error,
-                                              gtk::ButtonsType::Ok,
-                                              &text);
-            msg.connect_response(|msg, _resp| msg.close());
-            msg.run();
+            messagebox_error(Some(&dlg),
+                             &format!("Failed to save game:\n{}", e));
         }
         dlg.close();
     }
 
-    fn gsignal_quit(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
+    fn gsignal_quit(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
         exit_unwind(0);
     }
 
-    fn gsignal_about(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
+    fn gsignal_about(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
         self.about();
         None
     }
 
-    fn gsignal_connect(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
+    fn gsignal_connect(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
         self.connect_game();
         None
     }
 
-    fn gsignal_disconnect(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
+    fn gsignal_disconnect(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
         self.disconnect_game();
         None
     }
 
-    fn gsignal_resetgame(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
+    fn gsignal_resetgame(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
         self.draw.borrow_mut().reset_game();
         None
     }
 
-    fn gsignal_loadgame(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
+    fn gsignal_loadgame(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
         self.load_game();
         None
     }
 
-    fn gsignal_savegame(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _menu_item = gsigparam!(param[0], gtk::MenuItem);
+    fn gsignal_savegame(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
         self.save_game();
         None
     }

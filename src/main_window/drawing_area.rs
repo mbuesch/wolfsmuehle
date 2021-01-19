@@ -33,7 +33,7 @@ use crate::game_state::{
     MoveState,
     WinState,
 };
-use crate::gsigparam;
+use crate::{gsignal_connect_to, gsignal_connect_to_mut, gsigparam};
 use crate::gtk_helpers::*;
 use std::cell::RefCell;
 use std::path::Path;
@@ -359,13 +359,13 @@ impl DrawingArea {
                            handler_name: &str) -> Option<GSigHandler> {
         match handler_name {
             "handler_drawingarea_draw" =>
-                Some(Box::new(move |p| draw.borrow().gsignal_draw(p))),
+                Some(gsignal_connect_to!(draw, gsignal_draw, Some(false.to_value()))),
             "handler_drawingarea_motionnotify" =>
-                Some(Box::new(move |p| draw.borrow_mut().gsignal_motionnotify(p))),
+                Some(gsignal_connect_to_mut!(draw, gsignal_motionnotify, Some(false.to_value()))),
             "handler_drawingarea_buttonpress" =>
-                Some(Box::new(move |p| draw.borrow_mut().gsignal_buttonpress(p))),
+                Some(gsignal_connect_to_mut!(draw, gsignal_buttonpress, Some(false.to_value()))),
             "handler_drawingarea_buttonrelease" =>
-                Some(Box::new(move |p| draw.borrow_mut().gsignal_buttonrelease(p))),
+                Some(gsignal_connect_to_mut!(draw, gsignal_buttonrelease, Some(false.to_value()))),
             _ => None,
         }
     }

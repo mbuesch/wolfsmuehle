@@ -197,14 +197,39 @@ impl<'a> ServerInstance<'a> {
         let mut rooms = self.rooms.lock().unwrap();
         match find_room(&mut rooms, &room_name) {
             Some(room) => {
+                // Remove old player, if this player already joined a room.
+                let old_joined_room = self.joined_room.take();
+                let old_player_name = self.player_name.take();
+                let old_player_mode = self.player_mode;
+                self.player_mode = PlayerMode::Spectator;
+                if let Some(old_player_name) = old_player_name.as_ref() {
+                    room.remove_player(&old_player_name);
+                }
+
+                // Add player to room.
                 match room.add_player(player_name, player_mode) {
                     Ok(_) => {
                         self.player_mode = player_mode;
                         self.player_name = Some(player_name.to_string());
                         self.joined_room = Some(room.get_name().to_string());
-                        println!("{} joined '{}'", self.peer_addr, room.get_name());
+                        println!("{} / '{}' joined '{}'",
+                                 self.peer_addr,
+                                 player_name,
+                                 room.get_name());
                     },
                     Err(e) => {
+                        // Adding player to room failed.
+                        // Try to switch back to old name, if any.
+                        if let Some(old_player_name) = old_player_name {
+                            match room.add_player(&old_player_name, old_player_mode) {
+                                Ok(_) => {
+                                    self.player_mode = old_player_mode;
+                                    self.player_name = Some(old_player_name);
+                                    self.joined_room = old_joined_room;
+                                },
+                                Err(_) => (), // ignore
+                            }
+                        }
                         return Err(e);
                     }
                 }
@@ -248,24 +273,20 @@ impl<'a> ServerInstance<'a> {
             },
             MsgType::Join(msg) => {
                 let result;
-                if self.joined_room.is_none() {
-                    if let Ok(room_name) = msg.get_room_name() {
-                        if let Ok(player_name) = msg.get_player_name() {
-                            if let Ok(player_mode) = num_to_player_mode(msg.get_player_mode()) {
-                                result = self.do_join(&room_name,
-                                                      &player_name,
-                                                      player_mode);
-                            } else {
-                                result = Err(ah::format_err!("Received invalid player mode."));
-                            }
+                if let Ok(room_name) = msg.get_room_name() {
+                    if let Ok(player_name) = msg.get_player_name() {
+                        if let Ok(player_mode) = num_to_player_mode(msg.get_player_mode()) {
+                            result = self.do_join(&room_name,
+                                                  &player_name,
+                                                  player_mode);
                         } else {
-                            result = Err(ah::format_err!("Received invalid player name."));
+                            result = Err(ah::format_err!("Received invalid player mode."));
                         }
                     } else {
-                        result = Err(ah::format_err!("Received invalid room name."));
+                        result = Err(ah::format_err!("Received invalid player name."));
                     }
                 } else {
-                    result = Err(ah::format_err!("Already in room."));
+                    result = Err(ah::format_err!("Received invalid room name."));
                 }
                 match result {
                     Ok(_) => {
@@ -440,7 +461,8 @@ impl ServerRoom {
     }
 
     fn get_game_state(&mut self, player_mode: PlayerMode) -> &mut GameState {
-        self.game_state.set_player_mode(player_mode);
+        self.game_state.set_player_mode(player_mode)
+            .expect("game_state.set_player_mode failed.");
         &mut self.game_state
     }
 

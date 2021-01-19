@@ -290,8 +290,18 @@ impl GameState {
         self.client_send_reset_game();
     }
 
-    pub fn set_player_mode(&mut self, player_mode: PlayerMode) {
-        self.player_mode = player_mode;
+    pub fn set_player_mode(&mut self, player_mode: PlayerMode) -> ah::Result<()> {
+        if self.player_mode != player_mode {
+            self.do_join_room(None, None, Some(player_mode))?;
+        }
+        Ok(())
+    }
+
+    pub fn set_player_name(&mut self, player_name: &str) -> ah::Result<()> {
+        if self.player_name != player_name {
+            self.do_join_room(None, Some(player_name), None)?;
+        }
+        Ok(())
     }
 
     pub fn set_room_player_list(&mut self, room_player_list: PlayerList) {
@@ -846,6 +856,7 @@ impl GameState {
                 MsgType::Leave(_) |
                 MsgType::Reset(_) |
                 MsgType::ReqGameState(_) |
+                MsgType::ReqRoomList(_) |
                 MsgType::ReqPlayerList(_) |
                 MsgType::Move(_) => {
                     // Ignore.
@@ -856,6 +867,9 @@ impl GameState {
                             redraw = true;
                         }
                     }
+                },
+                MsgType::RoomList(msg) => {
+                    //TODO
                 },
                 MsgType::PlayerList(msg) => {
                     if self.joined_room.is_some() {
@@ -900,20 +914,69 @@ impl GameState {
         Ok(())
     }
 
+    fn do_join_room(&mut self,
+                    room_name: Option<&str>,
+                    player_name: Option<&str>,
+                    player_mode: Option<PlayerMode>) -> ah::Result<()> {
+        let room_name = match room_name {
+            Some(room_name) =>
+                Some(room_name.to_string()),
+            None =>
+                match self.joined_room.as_ref() {
+                    Some(joined_room) => Some(joined_room.to_string()),
+                    None => None,
+                },
+        };
+
+        let player_name = match player_name {
+            Some(player_name) => player_name,
+            None => &self.player_name,
+        };
+
+        let player_mode = match player_mode {
+            Some(player_mode) => player_mode,
+            None => self.player_mode,
+        };
+
+        let old_joined_room = self.joined_room.take();
+
+        if let Some(client) = self.client.as_mut() {
+            match room_name {
+                Some(room_name) => {
+                    match client.send_join(&room_name,
+                                           player_name,
+                                           player_mode) {
+                        Ok(_) => {
+                            self.joined_room = Some(room_name);
+                        },
+                        Err(e) => {
+                            self.joined_room = old_joined_room;
+                            return Err(e);
+                        },
+                    }
+                },
+                None => (),
+            }
+        }
+
+        self.player_name = player_name.to_string();
+        self.player_mode = player_mode;
+
+        Ok(())
+    }
+
     /// Join a room on the server.
     pub fn client_join_room(&mut self, room_name: &str) -> ah::Result<()> {
+        if self.client.is_none() {
+            return Err(ah::format_err!("Cannot join room. Not connected to a server."));
+        }
+        println!("Joining room '{}' ...", room_name);
+        self.do_join_room(Some(room_name), None, None)?;
         if let Some(client) = self.client.as_mut() {
-            println!("Joining room '{}' ...", room_name);
-            client.send_join(room_name,
-                             &self.player_name,
-                             self.player_mode)?;
             client.send_request_gamestate()?;
             self.fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
-            self.joined_room = Some(room_name.to_string());
-            Ok(())
-        } else {
-            Err(ah::format_err!("Cannot join room. Not connected to a server."))
         }
+        Ok(())
     }
 
     /// Disconnect from a game server.
