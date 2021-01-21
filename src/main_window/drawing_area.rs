@@ -86,6 +86,7 @@ enum MovingToken {
 pub struct DrawingArea {
     widget:         gtk::DrawingArea,
     game:           Rc<RefCell<GameState>>,
+    pending_join:   bool,
     moving_token:   MovingToken,
 }
 
@@ -100,12 +101,20 @@ impl DrawingArea {
         DrawingArea {
             widget,
             game,
+            pending_join: false,
             moving_token: MovingToken::NoToken,
         }
     }
 
     pub fn redraw(&self) {
         self.widget.queue_draw();
+    }
+
+    pub fn set_pending_join(&mut self, pending_join: bool) {
+        if pending_join != self.pending_join {
+            self.pending_join = pending_join;
+            self.redraw();
+        }
     }
 
     fn draw_background(&self, cairo: &cairo::Context) {
@@ -190,6 +199,10 @@ impl DrawingArea {
     }
 
     fn draw_tokens(&self, cairo: &cairo::Context) {
+        if self.pending_join {
+            return;
+        }
+
         let game = self.game.borrow();
 
         // Draw the board tokens.

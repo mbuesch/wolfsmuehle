@@ -17,10 +17,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
-mod data_repr;
-pub mod client;
-pub mod consts;
-pub mod protocol;
-pub mod server;
+pub const MAX_PLAYERS: usize    = 1024;
+pub const MAX_ROOMS: usize      = 1024 * 4;
 
 // vim: ts=4 sw=4 expandtab

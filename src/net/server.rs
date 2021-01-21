@@ -40,19 +40,25 @@ use crate::player::{
     num_to_player_mode,
     player_mode_to_num,
 };
-use crate::net::protocol::{
-    MSG_BUFFER_SIZE,
-    MSG_RESULT_NOK,
-    MSG_RESULT_OK,
-    Message,
-    MsgPlayerList,
-    MsgPong,
-    MsgResult,
-    MsgRoomList,
-    MsgType,
-    buffer_skip,
-    message_from_bytes,
-    net_sync,
+use crate::net::{
+    consts::{
+        MAX_PLAYERS,
+        MAX_ROOMS,
+    },
+    protocol::{
+        MSG_BUFFER_SIZE,
+        MSG_RESULT_NOK,
+        MSG_RESULT_OK,
+        Message,
+        MsgPlayerList,
+        MsgPong,
+        MsgResult,
+        MsgRoomList,
+        MsgType,
+        buffer_skip,
+        message_from_bytes,
+        net_sync,
+    },
 };
 
 const DEBUG_RAW: bool = false;
@@ -303,7 +309,7 @@ impl<'a> ServerInstance<'a> {
                 self.do_leave();
                 self.send_msg(&mut MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
             },
-            MsgType::ReqRoomList(msg) => {
+            MsgType::ReqRoomList(_msg) => {
                 let mut room_names = vec![];
                 {
                     let rooms = self.rooms.lock().unwrap();
@@ -500,15 +506,20 @@ impl ServerRoom {
             }
         }
 
-        if self.has_player(player_name) {
-            Err(ah::format_err!("Player name '{}' is already occupied.",
-                                player_name))
+        if self.player_list.count() < MAX_PLAYERS {
+            if self.has_player(player_name) {
+                Err(ah::format_err!("Player name '{}' is already occupied.",
+                                    player_name))
+            } else {
+                self.player_list.add_player(Player::new(player_name.to_string(),
+                                                        player_mode,
+                                                        false));
+                self.game_state.set_room_player_list(self.player_list.clone());
+                Ok(())
+            }
         } else {
-            self.player_list.add_player(Player::new(player_name.to_string(),
-                                                    player_mode,
-                                                    false));
-            self.game_state.set_room_player_list(self.player_list.clone());
-            Ok(())
+            Err(ah::format_err!("Player '{}' can't join. Too many players in room.",
+                                player_name))
         }
     }
 
@@ -546,6 +557,10 @@ impl Server {
 
     pub fn run(&mut self, room_names: &Vec<String>) -> ah::Result<()> {
         {
+            if room_names.len() > MAX_ROOMS {
+                return Err(ah::format_err!("Maximum number of rooms ({}) exceeded.",
+                                           MAX_ROOMS));
+            }
             let mut rooms = self.rooms.lock().unwrap();
             rooms.clear();
             for name in room_names {

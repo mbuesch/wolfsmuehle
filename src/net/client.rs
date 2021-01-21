@@ -41,6 +41,7 @@ use crate::net::protocol::{
     MsgPing,
     MsgReqGameState,
     MsgReqPlayerList,
+    MsgReqRoomList,
     MsgReset,
     MsgType,
     buffer_skip,
@@ -197,6 +198,12 @@ impl Client {
     /// Send a RequestPlayerList message to the server.
     pub fn send_request_playerlist(&mut self) -> ah::Result<()> {
         self.send_msg(&mut MsgReqPlayerList::new())?;
+        Ok(())
+    }
+
+    /// Send a RequestRoomList message to the server.
+    pub fn send_request_roomlist(&mut self) -> ah::Result<()> {
+        self.send_msg(&mut MsgReqRoomList::new())?;
         Ok(())
     }
 

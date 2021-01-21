@@ -17,8 +17,8 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
-mod player_list;
-use player_list::PlayerListView;
+mod game_meta_view;
+use game_meta_view::GameMetaView;
 
 mod drawing_area;
 use drawing_area::DrawingArea;
@@ -58,7 +58,7 @@ pub struct MainWindow {
     status_label:           gtk::Label,
     draw:                   Rc<RefCell<DrawingArea>>,
     game:                   Rc<RefCell<GameState>>,
-    player_list_view:       Rc<RefCell<PlayerListView>>,
+    game_meta_view:       Rc<RefCell<GameMetaView>>,
 }
 
 impl MainWindow {
@@ -92,14 +92,16 @@ impl MainWindow {
         }
 
         // Create player state area.
+        let room_tree: gtk::TreeView = builder.get_object("room_tree").unwrap();
         let player_tree: gtk::TreeView = builder.get_object("player_tree").unwrap();
         let player_name_entry: gtk::Entry = builder.get_object("player_name_entry").unwrap();
         let player_mode_combo: gtk::ComboBoxText = builder.get_object("player_mode_combo").unwrap();
-        let player_list_view = Rc::new(RefCell::new(
-            PlayerListView::new(Rc::clone(&game),
-                                player_tree,
-                                player_name_entry,
-                                player_mode_combo)));
+        let game_meta_view = Rc::new(RefCell::new(
+            GameMetaView::new(Rc::clone(&game),
+                              room_tree,
+                              player_tree,
+                              player_name_entry,
+                              player_mode_combo)));
 
         // Create drawing area.
         let draw = Rc::new(RefCell::new(DrawingArea::new(
@@ -113,7 +115,7 @@ impl MainWindow {
             status_label,
             draw,
             game,
-            player_list_view,
+            game_meta_view,
         }));
 
         // Create game polling timer.
@@ -128,16 +130,16 @@ impl MainWindow {
         // Connect signals.
         let mainwnd2 = Rc::clone(&mainwnd);
         let draw2 = Rc::clone(&mainwnd.borrow().draw);
-        let player_list_view2 = Rc::clone(&mainwnd.borrow().player_list_view);
+        let game_meta_view2 = Rc::clone(&mainwnd.borrow().game_meta_view);
         builder.connect_signals(move |_builder, handler_name| {
             let mainwnd2 = Rc::clone(&mainwnd2);
-            let player_list_view2 = Rc::clone(&player_list_view2);
+            let game_meta_view2 = Rc::clone(&game_meta_view2);
 
             match DrawingArea::connect_signals(Rc::clone(&draw2), handler_name) {
                 Some(handler) => return handler,
                 None => (),
             }
-            match PlayerListView::connect_signals(Rc::clone(&player_list_view2), handler_name) {
+            match GameMetaView::connect_signals(Rc::clone(&game_meta_view2), handler_name) {
                 Some(handler) => return handler,
                 None => (),
             }
@@ -170,19 +172,44 @@ impl MainWindow {
     }
 
     fn poll_timer(&mut self) {
-        if let Ok(draw) = self.draw.try_borrow() {
-            if let Ok(mut game) = self.game.try_borrow_mut() {
-                if let Ok(mut player_list_view) = self.player_list_view.try_borrow_mut() {
+        if let Ok(mut draw) = self.draw.try_borrow_mut() {
+            if let Ok(mut game_meta_view) = self.game_meta_view.try_borrow_mut() {
 
-                    let redraw = game.poll_server();
-                    if game.client_get_joined_room().is_none() {
-                        player_list_view.clear_player_list();
+                let redraw;
+                let player_list;
+                let room_list;
+                let is_joined_room;
+                let is_connected;
+                if let Ok(mut game) = self.game.try_borrow_mut() {
+                    redraw = game.poll_server();
+                    player_list = Some(game.get_room_player_list().clone());
+                    room_list = Some(game.get_room_list().clone());
+                    is_joined_room = game.client_get_joined_room().is_some();
+                    is_connected = Some(game.client_is_connected());
+                } else {
+                    redraw = false;
+                    player_list = None;
+                    room_list = None;
+                    is_joined_room = false;
+                    is_connected = None;
+                }
+
+                if let Some(player_list) = player_list {
+                    if !is_joined_room {
+                        game_meta_view.clear_player_list();
                     } else {
-                        player_list_view.update(game.get_room_player_list());
+                        game_meta_view.update_player_list(&player_list);
                     }
-                    if redraw {
-                        draw.redraw();
-                    }
+                }
+                if let Some(room_list) = room_list {
+                    game_meta_view.update_room_list(&room_list);
+                }
+                if let Some(is_connected) = is_connected {
+                    let pending_join = is_connected && !is_joined_room;
+                    draw.set_pending_join(pending_join);
+                }
+                if redraw {
+                    draw.redraw();
                 }
             }
         }
@@ -261,7 +288,7 @@ impl MainWindow {
                 messagebox_error(Some(&dlg),
                                  &format!("Failed to connect to server:\n{}", e));
             } else {
-                self.player_list_view.borrow_mut().clear_player_list();
+                self.game_meta_view.borrow_mut().clear_player_list();
                 self.button_connect.set_sensitive(false);
                 self.button_disconnect.set_sensitive(true);
             }
@@ -275,7 +302,7 @@ impl MainWindow {
         self.game.borrow_mut().client_disconnect();
 
         self.draw.borrow_mut().reset_game();
-        self.player_list_view.borrow_mut().clear_player_list();
+        self.game_meta_view.borrow_mut().clear_player_list();
         self.button_connect.set_sensitive(true);
         self.button_disconnect.set_sensitive(false);
 

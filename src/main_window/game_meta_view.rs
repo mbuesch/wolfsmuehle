@@ -24,21 +24,38 @@ use crate::player::{PlayerList, PlayerMode};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub struct PlayerListView {
+pub struct GameMetaView {
     game:                   Rc<RefCell<GameState>>,
-    tree_view:              gtk::TreeView,
-    model:                  gtk::ListStore,
-    displayed_list:         PlayerList,
+    roomlist_model:         gtk::ListStore,
+    playerlist_model:       gtk::ListStore,
+    displayed_playerlist:   PlayerList,
+    displayed_roomlist:     Vec<String>,
     player_name_entry:      gtk::Entry,
     player_mode_combo:      gtk::ComboBoxText,
     player_name_editing:    bool,
 }
 
-impl PlayerListView {
+impl GameMetaView {
     pub fn new(game:                Rc<RefCell<GameState>>,
-               tree_view:           gtk::TreeView,
+               room_tree_view:      gtk::TreeView,
+               player_tree_view:    gtk::TreeView,
                player_name_entry:   gtk::Entry,
-               player_mode_combo:   gtk::ComboBoxText) -> PlayerListView {
+               player_mode_combo:   gtk::ComboBoxText) -> GameMetaView {
+        // Room list
+        for i in 0..2 {
+            let column = gtk::TreeViewColumn::new();
+            let cell = gtk::CellRendererText::new();
+            column.pack_start(&cell, true);
+            column.add_attribute(&cell, "text", i);
+            column.set_title(["Room name",
+                              "joined", ][i as usize]);
+            room_tree_view.append_column(&column);
+        }
+        let roomlist_model = gtk::ListStore::new(&[String::static_type(),
+                                                   String::static_type(), ]);
+        room_tree_view.set_model(Some(&roomlist_model));
+
+        // Player list
         for i in 0..3 {
             let column = gtk::TreeViewColumn::new();
             let cell = gtk::CellRendererText::new();
@@ -46,19 +63,20 @@ impl PlayerListView {
             column.add_attribute(&cell, "text", i);
             column.set_title(["Player name",
                               "Mode",
-                              ""][i as usize]);
-            tree_view.append_column(&column);
+                              "is me", ][i as usize]);
+            player_tree_view.append_column(&column);
         }
-        let model = gtk::ListStore::new(&[String::static_type(),
-                                          String::static_type(),
-                                          String::static_type()]);
-        tree_view.set_model(Some(&model));
+        let playerlist_model = gtk::ListStore::new(&[String::static_type(),
+                                                     String::static_type(),
+                                                     String::static_type(), ]);
+        player_tree_view.set_model(Some(&playerlist_model));
 
-        PlayerListView {
+        GameMetaView {
             game,
-            tree_view,
-            model,
-            displayed_list: PlayerList::new(vec![]),
+            roomlist_model,
+            playerlist_model,
+            displayed_playerlist: PlayerList::new(vec![]),
+            displayed_roomlist: vec![],
             player_name_entry,
             player_mode_combo,
             player_name_editing: false,
@@ -66,18 +84,18 @@ impl PlayerListView {
     }
 
     fn do_update_player_list(&mut self, player_list: &PlayerList) {
-        self.model.clear();
+        self.playerlist_model.clear();
         for player in player_list.iter() {
 
-            self.model.insert_with_values(
+            self.playerlist_model.insert_with_values(
                 None,
                 &[0, 1, 2],
                 &[&player.name,
                   &format!("{}", player.mode),
-                  &format!("{}", if player.is_self { "*" } else { "" })]
+                  &if player.is_self { "*" } else { "" }, ]
             );
         }
-        self.displayed_list = player_list.clone();
+        self.displayed_playerlist = player_list.clone();
     }
 
     fn do_update_local_player(&mut self, player_list: &PlayerList) {
@@ -102,9 +120,9 @@ impl PlayerListView {
         }
     }
 
-    pub fn update(&mut self, player_list: &PlayerList) {
+    pub fn update_player_list(&mut self, player_list: &PlayerList) {
         if !self.player_name_editing {
-            if *player_list != self.displayed_list {
+            if *player_list != self.displayed_playerlist {
                self.do_update_player_list(player_list);
             }
             self.do_update_local_player(player_list);
@@ -112,8 +130,29 @@ impl PlayerListView {
     }
 
     pub fn clear_player_list(&mut self) {
-        if !self.displayed_list.is_empty() {
+        if !self.displayed_playerlist.is_empty() {
             self.do_update_player_list(&PlayerList::new(vec![]));
+        }
+    }
+
+    pub fn update_room_list(&mut self, room_list: &Vec<String>) {
+        if self.displayed_roomlist != *room_list {
+
+            self.roomlist_model.clear();
+            for room_name in room_list {
+                let is_joined_room = match self.game.borrow().client_get_joined_room() {
+                    Some(r) => r == room_name,
+                    None => false,
+                };
+
+                self.roomlist_model.insert_with_values(
+                    None,
+                    &[0, 1, ],
+                    &[&room_name,
+                      &if is_joined_room { "*" } else { "" }, ]
+                );
+            }
+            self.displayed_roomlist = room_list.clone();
         }
     }
 
@@ -173,7 +212,7 @@ impl PlayerListView {
         None
     }
 
-    pub fn connect_signals(_self: Rc<RefCell<PlayerListView>>,
+    pub fn connect_signals(_self: Rc<RefCell<GameMetaView>>,
                            handler_name: &str) -> Option<GSigHandler> {
         match handler_name {
             "handler_playername_changed" =>

@@ -31,6 +31,10 @@ use crate::board::{
 };
 use crate::net::{
     client::Client,
+    consts::{
+        MAX_PLAYERS,
+        MAX_ROOMS,
+    },
     protocol::{
         MSG_MOVE_ACTION_ABORT,
         MSG_MOVE_ACTION_MOVE,
@@ -43,6 +47,7 @@ use crate::net::{
         MsgGameState,
         MsgMove,
         MsgPlayerList,
+        MsgRoomList,
         MsgType,
     },
 };
@@ -59,6 +64,7 @@ use crate::player::{
 };
 use crate::random::random_alphanum;
 use std::fmt;
+use std::time;
 
 const PRINT_STATE: bool = true;
 
@@ -209,17 +215,22 @@ pub struct Stats {
 pub struct GameState {
     player_mode:        PlayerMode,
     player_name:        String,
-    joined_room:        Option<String>,
     room_player_list:   PlayerList,
+    room_list:          Vec<String>,
+
     fields:             [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
     moving:             MoveState,
     i_am_moving:        bool,
     stats:              Stats,
     turn:               Turn,
     just_beaten:        Option<Coord>,
+    orig_sheep_count:   u8,
+
     client:             Option<Client>,
     client_addr:        Option<String>,
-    orig_sheep_count:   u8,
+    joined_room:        Option<String>,
+    roomlist_time:      time::Instant,
+    playerlist_time:    time::Instant,
 }
 
 impl GameState {
@@ -245,17 +256,20 @@ impl GameState {
         let mut game = GameState {
             player_mode,
             player_name,
-            joined_room:        None,
             room_player_list,
+            room_list:          vec![],
             fields,
             moving:             MoveState::NoMove,
             i_am_moving:        false,
             stats,
             turn:               Turn::Sheep,
             just_beaten:        None,
+            orig_sheep_count:   0,
             client:             None,
             client_addr:        None,
-            orig_sheep_count:   0,
+            joined_room:        None,
+            roomlist_time:      time::Instant::now(),
+            playerlist_time:    time::Instant::now(),
         };
         game.reset_game(true);
         game.print_turn();
@@ -310,6 +324,10 @@ impl GameState {
 
     pub fn get_room_player_list(&self) -> &PlayerList {
         &self.room_player_list
+    }
+
+    pub fn get_room_list(&self) -> &Vec<String> {
+        &self.room_list
     }
 
     fn recalc_stats(&mut self) {
@@ -807,9 +825,36 @@ impl GameState {
         }
     }
 
+    fn client_handle_rx_msg_roomlist(&mut self, msg: &MsgRoomList) {
+        let total_count = msg.get_total_count();
+        if total_count > MAX_ROOMS as u32 {
+            eprintln!("Received RoomList with too many rooms: {}", total_count);
+            return;
+        }
+
+        self.room_list.resize_with(total_count as usize,
+                                   || "".to_string());
+
+        let room_name = match msg.get_room_name() {
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("Received RoomList with invalid room name: {}", e);
+                return;
+            },
+        };
+
+        let index = msg.get_index() as usize;
+        if index >= self.room_player_list.count() {
+            eprintln!("Received RoomList with invalid index.");
+            return;
+        }
+
+        self.room_list[index] = room_name;
+    }
+
     fn client_handle_rx_msg_playerlist(&mut self, msg: &MsgPlayerList) {
         let total_count = msg.get_total_count();
-        if total_count > 1024 {
+        if total_count > MAX_PLAYERS as u32 {
             eprintln!("Received PlayerList with too many players: {}", total_count);
             return;
         }
@@ -836,7 +881,13 @@ impl GameState {
         };
         let is_self = player_name == self.player_name;
 
-        self.room_player_list.set_player(msg.get_index() as usize,
+        let index = msg.get_index() as usize;
+        if index >= self.room_player_list.count() {
+            eprintln!("Received PlayerList with invalid index.");
+            return;
+        }
+
+        self.room_player_list.set_player(index,
                                          Player::new(player_name,
                                                      player_mode,
                                                      is_self));
@@ -869,7 +920,7 @@ impl GameState {
                     }
                 },
                 MsgType::RoomList(msg) => {
-                    //TODO
+                    self.client_handle_rx_msg_roomlist(msg);
                 },
                 MsgType::PlayerList(msg) => {
                     if self.joined_room.is_some() {
@@ -879,12 +930,22 @@ impl GameState {
             }
         }
 
-        if self.joined_room.is_some() {
-            if let Some(client) = self.client.as_mut() {
-                client.send_request_playerlist().ok();
+        if let Some(client) = self.client.as_mut() {
+            let now = time::Instant::now();
+
+            if self.joined_room.is_some() {
+                if now.duration_since(self.playerlist_time).as_millis() >= 200 {
+                    client.send_request_playerlist().ok();
+                    self.playerlist_time = now;
+                }
                 client.send_request_gamestate().ok();
             }
+            if now.duration_since(self.roomlist_time).as_millis() >= 1000 {
+                client.send_request_roomlist().ok();
+                self.roomlist_time = now;
+            }
         }
+
         redraw
     }
 
@@ -892,8 +953,7 @@ impl GameState {
     pub fn poll_server(&mut self) -> bool {
         if let Some(client) = self.client.as_mut() {
             if let Some(messages) = client.poll() {
-                self.client_handle_rx_messages(messages);
-                true
+                self.client_handle_rx_messages(messages)
             } else {
                 false
             }
@@ -911,6 +971,8 @@ impl GameState {
         client.send_nop()?;
         self.client = Some(client);
         self.client_addr = Some(addr.to_string());
+        self.roomlist_time = time::Instant::now() - time::Duration::new(1000, 0);
+        self.playerlist_time = self.roomlist_time;
         Ok(())
     }
 
@@ -987,6 +1049,11 @@ impl GameState {
             println!("Disconnected from server.");
         }
         self.joined_room = None;
+        self.room_list.clear();
+    }
+
+    pub fn client_is_connected(&self) -> bool {
+        self.client.is_some()
     }
 
     /// Get the address of the connected server, if any.
