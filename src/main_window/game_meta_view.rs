@@ -18,7 +18,7 @@
 //
 
 use crate::game_state::GameState;
-use crate::gsignal_connect_to_mut;
+use crate::{gsignal_connect_to_mut, gsigparam};
 use crate::gtk_helpers::*;
 use crate::player::{PlayerList, PlayerMode};
 use std::cell::RefCell;
@@ -156,6 +156,24 @@ impl GameMetaView {
         }
     }
 
+    fn handle_join_room_req(&mut self, room_name: &str) {
+        {
+            let mut game = self.game.borrow_mut();
+
+            if let Some(joined_room) = game.client_get_joined_room() {
+                if joined_room == room_name {
+                    return;
+                }
+            }
+
+            let result = game.client_join_room(room_name);
+            if let Err(e) = result {
+                eprintln!("Failed to join room: {}", e);
+            }
+        }
+        self.displayed_roomlist.clear();
+    }
+
     fn playername_changed(&mut self) {
         self.player_name_editing = true;
     }
@@ -212,6 +230,17 @@ impl GameMetaView {
         None
     }
 
+    fn gsignal_roomtree_rowactivated(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        let _tree_view = gsigparam!(param[0], gtk::TreeView);
+        let path = gsigparam!(param[1], gtk::TreePath);
+        let _column = gsigparam!(param[2], gtk::TreeViewColumn);
+        let index = path.get_indices()[0];
+        if (index as usize) < self.displayed_roomlist.len() {
+            self.handle_join_room_req(&self.displayed_roomlist[index as usize].to_string());
+        }
+        None
+    }
+
     pub fn connect_signals(_self: Rc<RefCell<GameMetaView>>,
                            handler_name: &str) -> Option<GSigHandler> {
         match handler_name {
@@ -225,6 +254,8 @@ impl GameMetaView {
                 Some(gsignal_connect_to_mut!(_self, gsignal_playername_focusout, Some(false.to_value()))),
             "handler_playermode_changed" =>
                 Some(gsignal_connect_to_mut!(_self, gsignal_playermode_changed, None)),
+            "handler_roomtree_rowactivated" =>
+                Some(gsignal_connect_to_mut!(_self, gsignal_roomtree_rowactivated, None)),
             _ => None,
         }
     }

@@ -844,7 +844,7 @@ impl GameState {
         };
 
         let index = msg.get_index() as usize;
-        if index >= self.room_player_list.count() {
+        if index >= self.room_list.len() {
             eprintln!("Received RoomList with invalid index.");
             return;
         }
