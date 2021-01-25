@@ -171,7 +171,7 @@ impl<'a> ServerInstance<'a> {
             MsgType::ReqPlayerList(_msg) => {
                 let mut replies = vec![];
                 let player_list = room.get_player_list_ref();
-                for (index, player) in player_list.iter().enumerate() {
+                for (index, player) in player_list.iter().sorted().enumerate() {
                     replies.push(MsgPlayerList::new(
                         player_list.count() as u32,
                         index as u32,

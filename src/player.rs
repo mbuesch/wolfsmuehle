@@ -24,6 +24,7 @@ use crate::net::protocol::{
     MSG_PLAYERMODE_SHEEP,
     MSG_PLAYERMODE_BOTH,
 };
+use std::cmp::{Ord, PartialOrd, Eq, PartialEq};
 use std::fmt;
 
 pub fn num_to_player_mode(player_mode: u32) -> ah::Result<PlayerMode> {
@@ -54,7 +55,7 @@ pub const fn player_mode_to_num(player_mode: PlayerMode) -> u32 {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum PlayerMode {
     /// Spectators can't manipulate the game state.
     Spectator,
@@ -77,7 +78,7 @@ impl fmt::Display for PlayerMode {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Player {
     pub name:       String,
     pub mode:       PlayerMode,
@@ -93,6 +94,18 @@ impl Player {
             mode,
             is_self,
         }
+    }
+}
+
+impl PartialOrd for Player {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.name.partial_cmp(&other.name)
+    }
+}
+
+impl Ord for Player {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
     }
 }
 
