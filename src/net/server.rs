@@ -85,6 +85,25 @@ fn find_room<'a>(rooms: &'a mut MutexGuard<'_, Vec<ServerRoom>>,
     None
 }
 
+macro_rules! do_leave {
+    ($self:expr, $rooms:expr) => {
+        if let Some(player_name) = $self.player_name.take() {
+            if let Some(room_name) = $self.joined_room.take() {
+                match find_room(&mut $rooms, &room_name) {
+                    Some(room) => room.remove_player(&player_name),
+                    None => (),
+                }
+                println!("{} / '{}' / '{}' has left the room '{}'",
+                         $self.peer_addr,
+                         player_name,
+                         $self.player_mode,
+                         room_name);
+            }
+            $self.player_mode = PlayerMode::Spectator;
+        }
+    }
+}
+
 impl<'a> ServerInstance<'a> {
     fn new(stream: &'a mut TcpStream,
            rooms: Arc<Mutex<Vec<ServerRoom>>>) -> ah::Result<ServerInstance<'a>> {
@@ -201,41 +220,58 @@ impl<'a> ServerInstance<'a> {
                player_name: &str,
                player_mode: PlayerMode) -> ah::Result<()> {
         let mut rooms = self.rooms.lock().unwrap();
+
+        // Check if join is possible.
         match find_room(&mut rooms, &room_name) {
             Some(room) => {
-                // Remove old player, if this player already joined a room.
-                let old_joined_room = self.joined_room.take();
-                let old_player_name = self.player_name.take();
-                let old_player_mode = self.player_mode;
-                self.player_mode = PlayerMode::Spectator;
-                if let Some(old_player_name) = old_player_name.as_ref() {
-                    room.remove_player(&old_player_name);
+                let mut ignore_player = None;
+                if let Some(joined_room) = self.joined_room.as_ref() {
+                    if joined_room == room_name {
+                        // We're about to re-join this room with a different
+                        // name or mode. Ignore the old name during checks.
+                        if let Some(old_player_name) = self.player_name.as_ref() {
+                            ignore_player = Some(&old_player_name[..]);
+                        }
+                    }
                 }
 
+                match room.can_add_player(player_name, player_mode, ignore_player) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        // Room already has a player by that name,
+                        // or the mode is in conflict.
+                        return Err(e);
+                    },
+                }
+            }
+            None => {
+                return Err(ah::format_err!("join: Room '{}' not found.",
+                                           room_name));
+            },
+        }
+
+        // Remove old player, if this player already joined a room.
+        do_leave!(self, rooms);
+
+        // Join the new room.
+        match find_room(&mut rooms, &room_name) {
+            Some(room) => {
                 // Add player to room.
                 match room.add_player(player_name, player_mode) {
                     Ok(_) => {
                         self.player_mode = player_mode;
                         self.player_name = Some(player_name.to_string());
                         self.joined_room = Some(room.get_name().to_string());
-                        println!("{} / '{}' joined '{}'",
+                        println!("{} / '{}' / '{}' has joined the room '{}'",
                                  self.peer_addr,
                                  player_name,
+                                 self.player_mode,
                                  room.get_name());
                     },
                     Err(e) => {
                         // Adding player to room failed.
-                        // Try to switch back to old name, if any.
-                        if let Some(old_player_name) = old_player_name {
-                            match room.add_player(&old_player_name, old_player_mode) {
-                                Ok(_) => {
-                                    self.player_mode = old_player_mode;
-                                    self.player_name = Some(old_player_name);
-                                    self.joined_room = old_joined_room;
-                                },
-                                Err(_) => (), // ignore
-                            }
-                        }
+                        // This should actually never happen,
+                        // because it should be caught by the check above.
                         return Err(e);
                     }
                 }
@@ -249,21 +285,8 @@ impl<'a> ServerInstance<'a> {
     }
 
     fn do_leave(&mut self) {
-        if let Some(player_name) = self.player_name.take() {
-            if let Some(room_name) = self.joined_room.take() {
-                let mut rooms = self.rooms.lock().unwrap();
-                match find_room(&mut rooms, &room_name) {
-                    Some(room) => room.remove_player(&player_name),
-                    None => (),
-                }
-                println!("{} / '{}' / '{}' has left the room '{}'",
-                         self.peer_addr,
-                         player_name,
-                         self.player_mode,
-                         room_name);
-            }
-            self.player_mode = PlayerMode::Spectator;
-        }
+        let mut rooms = self.rooms.lock().unwrap();
+        do_leave!(self, rooms);
     }
 
     /// Handle received message.
@@ -472,21 +495,15 @@ impl ServerRoom {
         &mut self.game_state
     }
 
-    fn has_player(&self, player_name: &str) -> bool {
-        self.player_list.find_player_by_name(player_name).is_some()
-    }
+    fn can_add_player(&self,
+                      player_name: &str,
+                      player_mode: PlayerMode,
+                      ignore_name: Option<&str>) -> ah::Result<()> {
+        let mut player_list = self.player_list.clone();
+        if let Some(ignore_name) = ignore_name {
+            player_list.remove_player_by_name(ignore_name);
+        }
 
-    fn has_wolf_player(&self) -> bool {
-        !self.player_list.find_players_by_mode(PlayerMode::Wolf).is_empty()
-    }
-
-    fn has_sheep_player(&self) -> bool {
-        !self.player_list.find_players_by_mode(PlayerMode::Sheep).is_empty()
-    }
-
-    fn add_player(&mut self,
-                  player_name: &str,
-                  player_mode: PlayerMode) -> ah::Result<()> {
         if self.restrict_player_modes {
             match player_mode {
                 PlayerMode::Spectator => (),
@@ -494,33 +511,42 @@ impl ServerRoom {
                     return Err(ah::format_err!("PlayerMode::Both not supported in restricted mode."));
                 },
                 PlayerMode::Wolf => {
-                    if self.has_wolf_player() {
+                    if !player_list.find_players_by_mode(PlayerMode::Wolf).is_empty() {
                         return Err(ah::format_err!("The game already has a Wolf player."));
                     }
                 },
                 PlayerMode::Sheep => {
-                    if self.has_sheep_player() {
+                    if !player_list.find_players_by_mode(PlayerMode::Sheep).is_empty() {
                         return Err(ah::format_err!("The game already has a Sheep player."));
                     }
                 },
             }
         }
 
-        if self.player_list.count() < MAX_PLAYERS {
-            if self.has_player(player_name) {
+        if player_list.count() < MAX_PLAYERS {
+            if player_list.find_player_by_name(player_name).is_some() {
                 Err(ah::format_err!("Player name '{}' is already occupied.",
                                     player_name))
             } else {
-                self.player_list.add_player(Player::new(player_name.to_string(),
-                                                        player_mode,
-                                                        false));
-                self.game_state.set_room_player_list(self.player_list.clone());
                 Ok(())
             }
         } else {
             Err(ah::format_err!("Player '{}' can't join. Too many players in room.",
                                 player_name))
         }
+    }
+
+    fn add_player(&mut self,
+                  player_name: &str,
+                  player_mode: PlayerMode) -> ah::Result<()> {
+
+        self.can_add_player(player_name, player_mode, None)?;
+
+        self.player_list.add_player(Player::new(player_name.to_string(),
+                                                player_mode,
+                                                false));
+        self.game_state.set_room_player_list(self.player_list.clone());
+        Ok(())
     }
 
     fn remove_player(&mut self, player_name: &str) {
