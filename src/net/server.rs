@@ -18,6 +18,8 @@
 //
 
 use anyhow as ah;
+use std::collections::HashMap;
+use std::cmp::{Ord, PartialOrd, Eq, PartialEq};
 use std::io::{
     Read,
     Write,
@@ -29,7 +31,7 @@ use std::net::{
     TcpStream,
     ToSocketAddrs,
 };
-use std::sync::{Mutex, MutexGuard, Arc};
+use std::sync::{Mutex, Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use crate::game_state::GameState;
@@ -60,36 +62,28 @@ use crate::net::{
         net_sync,
     },
 };
+use itertools::Itertools;
 
 const DEBUG_RAW: bool = false;
+
+type ServerRoomMap = HashMap<String, ServerRoom>;
 
 /// Server instance thread corresponding to one connected client.
 struct ServerInstance<'a> {
     stream:         &'a mut TcpStream,
     sequence:       u32,
     peer_addr:      SocketAddr,
-    rooms:          Arc<Mutex<Vec<ServerRoom>>>,
+    rooms:          Arc<Mutex<ServerRoomMap>>,
     joined_room:    Option<String>,
     player_name:    Option<String>,
     player_mode:    PlayerMode,
-}
-
-fn find_room<'a>(rooms: &'a mut MutexGuard<'_, Vec<ServerRoom>>,
-                 name: &'_ str)
-                 -> Option<&'a mut ServerRoom> {
-    for room in &mut **rooms {
-        if room.get_name() == name {
-            return Some(room);
-        }
-    }
-    None
 }
 
 macro_rules! do_leave {
     ($self:expr, $rooms:expr) => {
         if let Some(player_name) = $self.player_name.take() {
             if let Some(room_name) = $self.joined_room.take() {
-                match find_room(&mut $rooms, &room_name) {
+                match $rooms.get_mut(&room_name) {
                     Some(room) => room.remove_player(&player_name),
                     None => (),
                 }
@@ -106,7 +100,7 @@ macro_rules! do_leave {
 
 impl<'a> ServerInstance<'a> {
     fn new(stream: &'a mut TcpStream,
-           rooms: Arc<Mutex<Vec<ServerRoom>>>) -> ah::Result<ServerInstance<'a>> {
+           rooms: Arc<Mutex<ServerRoomMap>>) -> ah::Result<ServerInstance<'a>> {
         let peer_addr = stream.peer_addr()?;
         stream.set_nodelay(true)?;
         Ok(ServerInstance {
@@ -140,7 +134,7 @@ impl<'a> ServerInstance<'a> {
         let mut rooms = self.rooms.lock().unwrap();
 
         let room = if let Some(room_name) = self.joined_room.as_ref() {
-            find_room(&mut rooms, &room_name)
+            rooms.get_mut(room_name)
         } else {
             return Err(ah::format_err!("Not in a room."));
         };
@@ -222,7 +216,7 @@ impl<'a> ServerInstance<'a> {
         let mut rooms = self.rooms.lock().unwrap();
 
         // Check if join is possible.
-        match find_room(&mut rooms, &room_name) {
+        match rooms.get(room_name) {
             Some(room) => {
                 let mut ignore_player = None;
                 if let Some(joined_room) = self.joined_room.as_ref() {
@@ -254,7 +248,7 @@ impl<'a> ServerInstance<'a> {
         do_leave!(self, rooms);
 
         // Join the new room.
-        match find_room(&mut rooms, &room_name) {
+        match rooms.get_mut(room_name) {
             Some(room) => {
                 // Add player to room.
                 match room.add_player(player_name, player_mode) {
@@ -336,7 +330,7 @@ impl<'a> ServerInstance<'a> {
                 let mut room_names = vec![];
                 {
                     let rooms = self.rooms.lock().unwrap();
-                    for room in rooms.iter() {
+                    for (_room_name, room) in rooms.iter().sorted() {
                         room_names.push(room.get_name().to_string());
                     }
                 }
@@ -559,12 +553,33 @@ impl ServerRoom {
     }
 }
 
+impl PartialEq for ServerRoom {
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(&other.name)
+    }
+}
+
+impl PartialOrd for ServerRoom {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.name.partial_cmp(&other.name)
+    }
+}
+
+impl Ord for ServerRoom {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl Eq for ServerRoom {
+}
+
 pub struct Server {
     listener:               TcpListener,
     max_conns:              usize,
     restrict_player_modes:  bool,
     active_conns:           Arc<AtomicUsize>,
-    rooms:                  Arc<Mutex<Vec<ServerRoom>>>
+    rooms:                  Arc<Mutex<ServerRoomMap>>
 }
 
 impl Server {
@@ -577,7 +592,7 @@ impl Server {
             max_conns:      max_conns as usize,
             restrict_player_modes,
             active_conns:   Arc::new(AtomicUsize::new(0)),
-            rooms:          Arc::new(Mutex::new(vec![])),
+            rooms:          Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -593,7 +608,7 @@ impl Server {
                 println!("Opening room: {}", name);
                 let room = ServerRoom::new(name.to_string(),
                                            self.restrict_player_modes)?;
-                rooms.push(room);
+                rooms.insert(name.to_string(), room);
             }
         }
 
