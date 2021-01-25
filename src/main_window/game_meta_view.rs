@@ -156,22 +156,26 @@ impl GameMetaView {
         }
     }
 
-    fn handle_join_room_req(&mut self, room_name: &str) {
-        {
-            let mut game = self.game.borrow_mut();
+    fn handle_join_room_req(&mut self, tree_path: &gtk::TreePath) {
+        let index = tree_path.get_indices()[0];
+        if (index as usize) < self.displayed_roomlist.len() {
+            let room_name = &self.displayed_roomlist[index as usize].to_string();
+            {
+                let mut game = self.game.borrow_mut();
 
-            if let Some(joined_room) = game.client_get_joined_room() {
-                if joined_room == room_name {
-                    return;
+                if let Some(joined_room) = game.client_get_joined_room() {
+                    if joined_room == room_name {
+                        return;
+                    }
+                }
+
+                let result = game.client_join_room(room_name);
+                if let Err(e) = result {
+                    eprintln!("Failed to join room: {}", e);
                 }
             }
-
-            let result = game.client_join_room(room_name);
-            if let Err(e) = result {
-                eprintln!("Failed to join room: {}", e);
-            }
+            self.displayed_roomlist.clear();
         }
-        self.displayed_roomlist.clear();
     }
 
     fn playername_changed(&mut self) {
@@ -193,7 +197,27 @@ impl GameMetaView {
     }
 
     fn playermode_changed(&self) {
-        //TODO
+        let new_mode = match self.player_mode_combo.get_active_id() {
+            Some(id) => {
+                match id.as_str() {
+                    "spectator" => PlayerMode::Spectator,
+                    "wolf" => PlayerMode::Wolf,
+                    "sheep" => PlayerMode::Sheep,
+                    "both" => PlayerMode::Both,
+                    _ => PlayerMode::Spectator,
+                }
+            },
+            _ => PlayerMode::Spectator,
+        };
+        let result = self.game.borrow_mut().set_player_mode(new_mode);
+        match result {
+            Ok(_) => (),
+            Err(e) => {
+                messagebox_error::<gtk::Window>(
+                    None,
+                    &format!("Failed set new player mode:\n{}", e));
+            }
+        }
     }
 
     fn get_player_mode(&self) -> PlayerMode {
@@ -234,10 +258,7 @@ impl GameMetaView {
         let _tree_view = gsigparam!(param[0], gtk::TreeView);
         let path = gsigparam!(param[1], gtk::TreePath);
         let _column = gsigparam!(param[2], gtk::TreeViewColumn);
-        let index = path.get_indices()[0];
-        if (index as usize) < self.displayed_roomlist.len() {
-            self.handle_join_room_req(&self.displayed_roomlist[index as usize].to_string());
-        }
+        self.handle_join_room_req(&path);
         None
     }
 
