@@ -92,7 +92,7 @@ impl GameMetaView {
                 &[0, 1, 2],
                 &[&player.name,
                   &format!("{}", player.mode),
-                  &if player.is_self { "*" } else { "" }, ]
+                  &if player.is_self { "<---" } else { "" }, ]
             );
         }
         self.displayed_playerlist = player_list.clone();
@@ -149,7 +149,7 @@ impl GameMetaView {
                     None,
                     &[0, 1, ],
                     &[&room_name,
-                      &if is_joined_room { "*" } else { "" }, ]
+                      &if is_joined_room { "<---" } else { "" }, ]
                 );
             }
             self.displayed_roomlist = room_list.clone();
