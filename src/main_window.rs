@@ -156,6 +156,8 @@ impl MainWindow {
                     gsignal_connect_to_mut!(mainwnd2, gsignal_connect, None),
                 "handler_disconnect" =>
                     gsignal_connect_to_mut!(mainwnd2, gsignal_disconnect, None),
+                "handler_record_show" =>
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_record_show, None),
                 "handler_about" =>
                     gsignal_connect_to_mut!(mainwnd2, gsignal_about, None),
                 "handler_quit" =>
@@ -249,6 +251,11 @@ impl MainWindow {
 
     fn about(&self) {
         messagebox_info(Some(&self.appwindow), ABOUT_TEXT);
+    }
+
+    fn record_show(&self) {
+        let log = self.game.borrow().get_recorder().get_recorded_moves().join("\n");
+        messagebox_info(Some(&self.appwindow), &log);
     }
 
     fn connect_game(&mut self) {
@@ -350,6 +357,11 @@ impl MainWindow {
                              &format!("Failed to save game:\n{}", e));
         }
         dlg.close();
+    }
+
+    fn gsignal_record_show(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
+        self.record_show();
+        None
     }
 
     fn gsignal_quit(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {

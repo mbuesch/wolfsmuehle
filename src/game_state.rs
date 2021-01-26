@@ -17,6 +17,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+mod recorder;
 mod serialize;
 
 use anyhow as ah;
@@ -56,6 +57,7 @@ use crate::coord::{
     CoordAxis,
 };
 use crate::coord;
+use crate::game_state::recorder::Recorder;
 use crate::player::{
     Player,
     PlayerList,
@@ -218,6 +220,7 @@ pub struct GameState {
     turn:               Turn,
     just_beaten:        Option<Coord>,
     orig_sheep_count:   u8,
+    recorder:           Recorder,
 
     client:             Option<Client>,
     client_addr:        Option<String>,
@@ -258,6 +261,7 @@ impl GameState {
             turn:               Turn::Sheep,
             just_beaten:        None,
             orig_sheep_count:   0,
+            recorder:           Recorder::new(),
             client:             None,
             client_addr:        None,
             joined_room:        None,
@@ -267,6 +271,10 @@ impl GameState {
         game.reset_game(true);
         game.print_turn();
         Ok(game)
+    }
+
+    pub fn get_recorder(&self) -> &Recorder {
+        &self.recorder
     }
 
     pub fn reset_game(&mut self, force: bool) {
@@ -293,6 +301,7 @@ impl GameState {
         self.turn = Turn::Sheep;
         self.just_beaten = None;
 
+        self.recorder.reset();
         self.recalc_stats();
         self.client_send_reset_game();
     }
@@ -647,19 +656,20 @@ impl GameState {
     }
 
     /// Actually commit the move-put.
-    fn do_move_put(&mut self, pos: Coord) {
+    fn do_move_put(&mut self, to_pos: Coord, captured: bool) {
         match self.moving {
             MoveState::NoMove =>
                 Print::error("Internal error: Invalid move source."),
             MoveState::Wolf(from_pos) => {
-                self.set_field_state(pos, FieldState::Wolf);
+                self.set_field_state(to_pos, FieldState::Wolf);
                 self.set_field_state(from_pos, FieldState::Empty);
             },
             MoveState::Sheep(from_pos) => {
-                self.set_field_state(pos, FieldState::Sheep);
+                self.set_field_state(to_pos, FieldState::Sheep);
                 self.set_field_state(from_pos, FieldState::Empty);
             },
         }
+        self.recorder.record_move(&self.moving, &to_pos, captured);
         self.next_turn();
         self.moving = MoveState::NoMove;
     }
@@ -693,13 +703,13 @@ impl GameState {
                         Err(ah::format_err!("move_put: Invalid move.")),
                     ValidationResult::Valid => {
                         self.client_send_move_put(pos, token_id)?;
-                        self.do_move_put(pos);
+                        self.do_move_put(pos, false);
                         Ok(())
                     },
                     ValidationResult::ValidBeat(beat_pos) => {
                         self.client_send_move_put(pos, token_id)?;
                         self.beat(from_pos, pos, beat_pos);
-                        self.do_move_put(pos);
+                        self.do_move_put(pos, true);
                         Ok(())
                     },
                 }

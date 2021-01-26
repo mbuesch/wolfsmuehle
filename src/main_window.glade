@@ -137,6 +137,30 @@
               <object class="GtkMenuItem">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
+                <property name="label" translatable="yes">_Recorder</property>
+                <property name="use-underline">True</property>
+                <child type="submenu">
+                  <object class="GtkMenu">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <child>
+                      <object class="GtkImageMenuItem" id="menubutton_record_show">
+                        <property name="label" translatable="yes">Show recorded game,,,</property>
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="image">image6</property>
+                        <property name="use-stock">False</property>
+                        <signal name="activate" handler="handler_record_show" swapped="no"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
                 <property name="label" translatable="yes">_Help</property>
                 <property name="use-underline">True</property>
                 <child type="submenu">
@@ -318,5 +342,10 @@
         </child>
       </object>
     </child>
+  </object>
+  <object class="GtkImage" id="image6">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="stock">gtk-file</property>
   </object>
 </interface>
