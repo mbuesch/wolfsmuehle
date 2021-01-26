@@ -28,6 +28,7 @@ use crate::game_state::GameState;
 use crate::gsignal_connect_to_mut;
 use crate::gtk_helpers::*;
 use crate::player::PlayerMode;
+use crate::print::Print;
 use expect_exit::exit_unwind;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -160,7 +161,7 @@ impl MainWindow {
                 "handler_quit" =>
                     gsignal_connect_to_mut!(mainwnd2, gsignal_quit, None),
                 name => {
-                    eprintln!("Unhandled signal: {}", name);
+                    Print::error(&format!("Unhandled signal: {}", name));
                     Box::new(|_| None)
                 }
             }

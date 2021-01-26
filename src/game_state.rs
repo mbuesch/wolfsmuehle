@@ -62,11 +62,10 @@ use crate::player::{
     PlayerMode,
     num_to_player_mode,
 };
+use crate::print::Print;
 use crate::random::random_alphanum;
 use std::fmt;
 use std::time;
-
-const PRINT_STATE: bool = true;
 
 const BEAT_OFFSETS: [Coord; 8] = [
     coord!(-2, 0),
@@ -141,12 +140,6 @@ const INITIAL_STATE: [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize]
 pub fn is_opposite_token(a: FieldState, b: FieldState) -> bool {
     (a == FieldState::Sheep && b == FieldState::Wolf) ||
     (a == FieldState::Wolf  && b == FieldState::Sheep)
-}
-
-fn print_state(msg: &str) {
-    if PRINT_STATE {
-        println!("{}", msg);
-    }
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -278,7 +271,7 @@ impl GameState {
 
     pub fn reset_game(&mut self, force: bool) {
         if self.player_mode == PlayerMode::Spectator && !force {
-            eprintln!("reset_game: Player is spectator. Not allowed to reset the game.");
+            Print::error("reset_game: Player is spectator. Not allowed to reset the game.");
             return;
         }
 
@@ -414,15 +407,15 @@ impl GameState {
     fn beat(&mut self, _from_pos: Coord, to_pos: Coord, beat_pos: Coord) {
         match self.get_field_state(beat_pos) {
             FieldState::Unused | FieldState::Empty =>
-                eprintln!("Internal error: Cannot beat empty fields."),
+                Print::error("Internal error: Cannot beat empty fields."),
             FieldState::Wolf =>
-                eprintln!("Internal error: Cannot beat wolves."),
+                Print::error("Internal error: Cannot beat wolves."),
             FieldState::Sheep => {
                 self.stats.sheep -= 1;
                 self.stats.sheep_beaten += 1;
                 self.just_beaten = Some(to_pos);
                 self.set_field_state(beat_pos, FieldState::Empty);
-                print_state(&format!("Beaten sheep at {}", beat_pos));
+                Print::debug(&format!("Beaten sheep at {}", beat_pos));
             },
         }
     }
@@ -537,7 +530,7 @@ impl GameState {
                 }
             }
         } else { // Can never happen.
-            eprintln!("Internal error: validate_move() invalid state.");
+            Print::error("Internal error: validate_move() invalid state.");
         }
 
         // Check if this is our turn.
@@ -572,7 +565,7 @@ impl GameState {
     }
 
     fn print_turn(&self) {
-        print_state(&format!("Next turn is: {:?}", self.turn));
+        Print::debug(&format!("Next turn is: {:?}", self.turn));
     }
 
     fn next_turn(&mut self) {
@@ -584,7 +577,7 @@ impl GameState {
                     let to_pos = wolf_pos + *offset;
                     match self.validate_move(wolf_pos, to_pos) {
                         ValidationResult::ValidBeat(_) => {
-                            print_state("Wolf can beat more sheep.");
+                            Print::debug("Wolf can beat more sheep.");
                             return Turn::WolfchainOrSheep;
                         },
                         ValidationResult::Invalid | ValidationResult::Valid =>
@@ -601,7 +594,7 @@ impl GameState {
             Turn::WolfchainOrSheep => {
                 match self.moving {
                     MoveState::NoMove =>
-                        eprintln!("Internal error: next_turn() no move."),
+                        Print::error("Internal error: next_turn() no move."),
                     MoveState::Wolf(_) =>
                         self.turn = calc_wolf_turn(),
                     MoveState::Sheep(_) =>
@@ -657,7 +650,7 @@ impl GameState {
     fn do_move_put(&mut self, pos: Coord) {
         match self.moving {
             MoveState::NoMove =>
-                eprintln!("Internal error: Invalid move source."),
+                Print::error("Internal error: Invalid move source."),
             MoveState::Wolf(from_pos) => {
                 self.set_field_state(pos, FieldState::Wolf);
                 self.set_field_state(from_pos, FieldState::Empty);
@@ -719,7 +712,7 @@ impl GameState {
     /// Abort a move operation.
     pub fn move_abort(&mut self) {
         if self.player_mode == PlayerMode::Spectator {
-            eprintln!("move_abort: Player is spectator. Not allowed to move.");
+            Print::error("move_abort: Player is spectator. Not allowed to move.");
             return;
         }
 
@@ -765,7 +758,7 @@ impl GameState {
                 let field = match num_to_field_state(msg.get_fields()[y][x]) {
                     Ok(field) => field,
                     Err(e) => {
-                        eprintln!("Received invalid field state: {}", e);
+                        Print::error(&format!("Received invalid field state: {}", e));
                         self.fields[y][x]
                     },
                 };
@@ -778,7 +771,7 @@ impl GameState {
             let moving = match num_to_move_state(msg.get_moving()) {
                 Ok(moving) => moving,
                 Err(e) => {
-                    eprintln!("Received invalid moving state: {}", e);
+                    Print::error(&format!("Received invalid moving state: {}", e));
                     self.moving
                 },
             };
@@ -790,7 +783,7 @@ impl GameState {
             let turn = match num_to_turn(msg.get_turn()) {
                 Ok(turn) => turn,
                 Err(e) => {
-                    eprintln!("Received invalid turn state: {}", e);
+                    Print::error(&format!("Received invalid turn state: {}", e));
                     self.turn
                 },
             };
@@ -828,7 +821,8 @@ impl GameState {
     fn client_handle_rx_msg_roomlist(&mut self, msg: &MsgRoomList) {
         let total_count = msg.get_total_count();
         if total_count > MAX_ROOMS as u32 {
-            eprintln!("Received RoomList with too many rooms: {}", total_count);
+            Print::error(&format!("Received RoomList with too many rooms: {}",
+                                  total_count));
             return;
         }
 
@@ -838,14 +832,14 @@ impl GameState {
         let room_name = match msg.get_room_name() {
             Ok(n) => n,
             Err(e) => {
-                eprintln!("Received RoomList with invalid room name: {}", e);
+                Print::error(&format!("Received RoomList with invalid room name: {}", e));
                 return;
             },
         };
 
         let index = msg.get_index() as usize;
         if index >= self.room_list.len() {
-            eprintln!("Received RoomList with invalid index.");
+            Print::error("Received RoomList with invalid index.");
             return;
         }
 
@@ -855,7 +849,8 @@ impl GameState {
     fn client_handle_rx_msg_playerlist(&mut self, msg: &MsgPlayerList) {
         let total_count = msg.get_total_count();
         if total_count > MAX_PLAYERS as u32 {
-            eprintln!("Received PlayerList with too many players: {}", total_count);
+            Print::error(&format!("Received PlayerList with too many players: {}",
+                                  total_count));
             return;
         }
 
@@ -867,15 +862,15 @@ impl GameState {
         let player_name = match msg.get_player_name() {
             Ok(n) => n,
             Err(e) => {
-                eprintln!("Received PlayerList with invalid player name: {}", e);
+                Print::error(&format!("Received PlayerList with invalid player name: {}", e));
                 return;
             }
         };
         let player_mode = match num_to_player_mode(msg.get_player_mode()) {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("Received PlayerList with invalid player mode '{}': {}",
-                          msg.get_player_mode(), e);
+                Print::error(&format!("Received PlayerList with invalid player mode '{}': {}",
+                                      msg.get_player_mode(), e));
                 return;
             },
         };
@@ -883,7 +878,7 @@ impl GameState {
 
         let index = msg.get_index() as usize;
         if index >= self.room_player_list.count() {
-            eprintln!("Received PlayerList with invalid index.");
+            Print::error("Received PlayerList with invalid index.");
             return;
         }
 
@@ -965,7 +960,7 @@ impl GameState {
     /// Connect to a game server.
     pub fn client_connect(&mut self, addr: &str) -> ah::Result<()> {
         self.client_disconnect();
-        println!("Connecting to server {} ...", addr);
+        Print::info(&format!("Connecting to server {} ...", addr));
         let mut client = Client::new(addr)?;
         client.send_ping()?;
         client.send_nop()?;
@@ -1032,7 +1027,7 @@ impl GameState {
         if self.client.is_none() {
             return Err(ah::format_err!("Cannot join room. Not connected to a server."));
         }
-        println!("Joining room '{}' ...", room_name);
+        Print::info(&format!("Joining room '{}' ...", room_name));
         self.do_join_room(Some(room_name), None, None)?;
         if let Some(client) = self.client.as_mut() {
             client.send_request_gamestate()?;
@@ -1046,7 +1041,7 @@ impl GameState {
         if let Some(client) = self.client.take() {
             client.disconnect();
             self.client_addr = None;
-            println!("Disconnected from server.");
+            Print::info("Disconnected from server.");
         }
         self.joined_room = None;
         self.room_list.clear();
@@ -1075,7 +1070,7 @@ impl GameState {
     fn client_send_reset_game(&mut self) {
         if let Some(client) = self.client.as_mut() {
             if let Err(e) = client.send_reset() {
-                eprintln!("Failed to game-reset: {}", e);
+                Print::error(&format!("Failed to game-reset: {}", e));
             }
         }
     }
@@ -1088,7 +1083,7 @@ impl GameState {
                                                    pos.x as u32,
                                                    pos.y as u32) {
                 let msg = format!("Move-pick failed on server: {}", e);
-                eprintln!("{}", msg);
+                Print::error(&msg);
                 return Err(ah::format_err!("{}", msg));
             }
         }
@@ -1103,7 +1098,7 @@ impl GameState {
                                                    pos.x as u32,
                                                    pos.y as u32) {
                 let msg = format!("Move failed on server: {}", e);
-                eprintln!("{}", msg);
+                Print::error(&msg);
                 return Err(ah::format_err!("{}", msg));
             }
         }
@@ -1117,7 +1112,7 @@ impl GameState {
                                                    MSG_MOVE_TOKEN_CURRENT,
                                                    pos.x as u32,
                                                    pos.y as u32) {
-                eprintln!("Move-abort failed on server: {}", e);
+                Print::error(&format!("Move-abort failed on server: {}", e));
             }
         }
         Ok(())
@@ -1152,7 +1147,7 @@ impl GameState {
                 self.move_abort();
             },
             (action, _, _) => {
-                eprintln!("Received invalid move action: {}", action);
+                Print::error(&format!("Received invalid move action: {}", action));
             },
         }
         Ok(())

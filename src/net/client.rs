@@ -31,6 +31,7 @@ use crate::player::{
     PlayerMode,
     player_mode_to_num,
 };
+use crate::print::Print;
 use crate::net::protocol::{
     MSG_BUFFER_SIZE,
     Message,
@@ -76,7 +77,7 @@ impl Client {
     /// Send a data blob to the server.
     fn send(&mut self, data: &[u8]) -> ah::Result<()> {
         if DEBUG_RAW {
-            println!("Client TX: {:?}", data);
+            Print::debug(&format!("Client TX: {:?}", data));
         }
         self.stream.write(data)?;
         Ok(())
@@ -237,7 +238,7 @@ impl Client {
             Ok(len) => {
                 buffer.truncate(offset + len);
                 if DEBUG_RAW {
-                    println!("Client RX: {:?}", buffer);
+                    Print::debug(&format!("Client RX: {:?}", buffer));
                 }
             },
             Err(e) => {
@@ -248,7 +249,7 @@ impl Client {
                 };
                 if err_code != EAGAIN &&
                    err_code != EWOULDBLOCK {
-                    eprintln!("Receive error: {}", e);
+                    Print::error(&format!("Receive error: {}", e));
                 }
                 buffer.truncate(offset);
             },
@@ -279,7 +280,7 @@ impl Client {
                     break;
                 },
                 Err(e) => {
-                    eprintln!("Received invalid message: {}", e);
+                    Print::error(&format!("Received invalid message: {}", e));
                     self.sync = false;
                     buffer.clear();
                     break;

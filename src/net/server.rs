@@ -42,6 +42,7 @@ use crate::player::{
     num_to_player_mode,
     player_mode_to_num,
 };
+use crate::print::Print;
 use crate::net::{
     consts::{
         MAX_PLAYERS,
@@ -87,11 +88,11 @@ macro_rules! do_leave {
                     Some(room) => room.remove_player(&player_name),
                     None => (),
                 }
-                println!("{} / '{}' / '{}' has left the room '{}'",
-                         $self.peer_addr,
-                         player_name,
-                         $self.player_mode,
-                         room_name);
+                Print::info(&format!("{} / '{}' / '{}' has left the room '{}'",
+                                     $self.peer_addr,
+                                     player_name,
+                                     $self.player_mode,
+                                     room_name));
             }
             $self.player_mode = PlayerMode::Spectator;
         }
@@ -116,7 +117,7 @@ impl<'a> ServerInstance<'a> {
 
     fn send(&mut self, data: &[u8]) -> ah::Result<()> {
         if DEBUG_RAW {
-            println!("Server TX: {:?}", data);
+            Print::debug(&format!("Server TX: {:?}", data));
         }
         self.stream.write(data)?;
         Ok(())
@@ -256,11 +257,11 @@ impl<'a> ServerInstance<'a> {
                         self.player_mode = player_mode;
                         self.player_name = Some(player_name.to_string());
                         self.joined_room = Some(room.get_name().to_string());
-                        println!("{} / '{}' / '{}' has joined the room '{}'",
-                                 self.peer_addr,
-                                 player_name,
-                                 self.player_mode,
-                                 room.get_name());
+                        Print::info(&format!("{} / '{}' / '{}' has joined the room '{}'",
+                                             self.peer_addr,
+                                             player_name,
+                                             self.player_mode,
+                                             room.get_name()));
                     },
                     Err(e) => {
                         // Adding player to room failed.
@@ -359,7 +360,7 @@ impl<'a> ServerInstance<'a> {
     /// Handle received data.
     fn handle_rx_data(&mut self, data: &[u8]) -> ah::Result<Option<usize>> {
         if DEBUG_RAW {
-            println!("Server RX: {:?}", data);
+            Print::debug(&format!("Server RX: {:?}", data));
         }
         match message_from_bytes(data) {
             Ok((msg_len, Some(msg))) => {
@@ -367,7 +368,7 @@ impl<'a> ServerInstance<'a> {
                 match self.handle_rx_message(message) {
                     Ok(()) => (),
                     Err(e) => {
-                        eprintln!("Failed to handle received message: {}", e);
+                        Print::error(&format!("Failed to handle received message: {}", e));
                         // We don't forward this error to our caller.
                     },
                 }
@@ -385,7 +386,7 @@ impl<'a> ServerInstance<'a> {
 
     /// Main server loop.
     fn run_loop(&mut self) {
-        println!("Client connected: {}", self.peer_addr);
+        Print::info(&format!("Client connected: {}", self.peer_addr));
 
         let mut sync = false;
         let mut buffer = Vec::with_capacity(MSG_BUFFER_SIZE);
@@ -393,7 +394,7 @@ impl<'a> ServerInstance<'a> {
         loop {
             let mut tail_len = buffer.len();
             if tail_len >= MSG_BUFFER_SIZE {
-                eprintln!("Tail buffer overrun.");
+                Print::error("Tail buffer overrun.");
                 buffer.clear();
                 tail_len = 0;
                 sync = false;
@@ -408,7 +409,7 @@ impl<'a> ServerInstance<'a> {
             match self.stream.read(&mut buffer[tail_len..(tail_len + read_len)]) {
                 Ok(actual_len) => {
                     if actual_len == 0 {
-                        println!("Client disconnected: {}", self.peer_addr);
+                        Print::info(&format!("Client disconnected: {}", self.peer_addr));
                         break;
                     }
                     buffer.truncate(tail_len + actual_len);
@@ -439,7 +440,7 @@ impl<'a> ServerInstance<'a> {
                                 break;
                             },
                             Err(e) => {
-                                eprintln!("Server message error: {}", e);
+                                Print::error(&format!("Server message error: {}", e));
                                 sync = false;
                                 buffer.clear();
                                 break;
@@ -448,7 +449,7 @@ impl<'a> ServerInstance<'a> {
                     }
                 },
                 Err(e) => {
-                    eprintln!("Server thread error: {}", e);
+                    Print::error(&format!("Server thread error: {}", e));
                     break;
                 },
             }
@@ -605,7 +606,7 @@ impl Server {
             let mut rooms = self.rooms.lock().unwrap();
             rooms.clear();
             for name in room_names {
-                println!("Opening room: {}", name);
+                Print::info(&format!("Opening room: {}", name));
                 let room = ServerRoom::new(name.to_string(),
                                            self.restrict_player_modes)?;
                 rooms.insert(name.to_string(), room);
@@ -624,10 +625,10 @@ impl Server {
                                 Ok(mut instance) => {
                                     instance.run_loop();
                                     drop(instance);
-                                    println!("Server thread exiting.");
+                                    Print::debug("Server thread exiting.");
                                 },
                                 Err(e) => {
-                                    eprintln!("Could not construct server instance: {}", e);
+                                    Print::error(&format!("Could not construct server instance: {}", e));
                                 },
                             };
                             stream.shutdown(Shutdown::Both).ok();
@@ -640,8 +641,8 @@ impl Server {
                             Err(_) => "unknown".to_string(),
                         };
                         stream.shutdown(Shutdown::Both).ok();
-                        eprintln!("Rejected connection from '{}': Too many connections.",
-                                  peer_addr);
+                        Print::error(&format!("Rejected connection from '{}': Too many connections.",
+                                              peer_addr));
                         self.active_conns.fetch_sub(1, Ordering::Release);
                     }
                 },

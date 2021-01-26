@@ -18,9 +18,10 @@
 //
 
 use crate::game_state::GameState;
-use crate::{gsignal_connect_to_mut, gsigparam};
 use crate::gtk_helpers::*;
 use crate::player::{PlayerList, PlayerMode};
+use crate::print::Print;
+use crate::{gsignal_connect_to_mut, gsigparam};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -171,7 +172,7 @@ impl GameMetaView {
 
                 let result = game.client_join_room(room_name);
                 if let Err(e) = result {
-                    eprintln!("Failed to join room: {}", e);
+                    Print::error(&format!("Failed to join room: {}", e));
                 }
             }
             self.displayed_roomlist.clear();

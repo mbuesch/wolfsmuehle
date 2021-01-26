@@ -27,6 +27,7 @@ mod main_window;
 #[cfg(feature="server")]
 mod net;
 mod player;
+mod print;
 mod random;
 
 use anyhow as ah;
@@ -44,10 +45,20 @@ use gio::prelude::*;
 use gtk::prelude::*;
 //use std::env;
 use structopt::StructOpt;
+use crate::print::Print;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name="wolfsmühle")]
 struct Opts {
+    /// Set the log level.
+    /// 0 = Silent. Don't print anything.
+    /// 1 = Only print errors.
+    /// 2 = Print errors and warnings.
+    /// 3 = Print errors, warnings and info.
+    /// 4 = Print errors, warnings, info and debug.
+    #[structopt(short="L", long, default_value="3")]
+    log_level: u8,
+
     /// Run a dedicated server.
     #[cfg(feature="gui")]
     #[structopt(short, long)]
@@ -99,7 +110,7 @@ struct Opts {
 fn server_fn(opt: &Opts) -> ah::Result<()> {
     let addr = format!("{}:{}", opt.server_bind, opt.port);
 
-    println!("Running dedicated server on {} ...", addr);
+    Print::info(&format!("Running dedicated server on {} ...", addr));
     let mut s = Server::new(addr,
                             opt.max_connections,
                             opt.restrict_player_modes)?;
@@ -108,7 +119,8 @@ fn server_fn(opt: &Opts) -> ah::Result<()> {
     let rooms = match opt.room.as_ref() {
         Some(r) => r,
         None => {
-            println!("No server rooms specified. Using '{}'.", default_rooms[0]);
+            Print::warning(&format!("No server rooms specified. Using '{}'.",
+                                    default_rooms[0]));
             &default_rooms
         },
     };
@@ -159,6 +171,7 @@ fn app_fn(app: &gtk::Application) {
 
 fn main() -> ah::Result<()> {
     let opt = Opts::from_args();
+    Print::set_level_number(opt.log_level);
 
     #[cfg(feature="gui")]
     let run_server = opt.server;
