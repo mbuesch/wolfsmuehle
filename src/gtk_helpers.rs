@@ -56,25 +56,40 @@ macro_rules! gsignal_connect_to_mut {
 
 pub type GSigHandler = Box<dyn Fn(&[glib::Value]) -> Option<glib::Value> + 'static>;
 
+fn prepare_message_dialog(msg: &mut gtk::MessageDialog) {
+    // Make the text selectable.
+    if let Some(area) = msg.get_message_area() {
+        if let Some(cont) = area.downcast_ref::<gtk::Container>() {
+            for child in cont.get_children() {
+                if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                    label.set_selectable(true);
+                }
+            }
+        }
+    }
+    // Auto-close the dialog.
+    msg.connect_response(|msg, _resp| msg.close());
+}
+
 pub fn messagebox_info<T: glib::IsA<gtk::Window>>(parent: Option<&T>,
                                                   text: &str) {
-    let msg = gtk::MessageDialog::new(parent,
-                                      gtk::DialogFlags::MODAL,
-                                      gtk::MessageType::Info,
-                                      gtk::ButtonsType::Ok,
-                                      text);
-    msg.connect_response(|msg, _resp| msg.close());
+    let mut msg = gtk::MessageDialog::new(parent,
+                                          gtk::DialogFlags::MODAL,
+                                          gtk::MessageType::Info,
+                                          gtk::ButtonsType::Ok,
+                                          text);
+    prepare_message_dialog(&mut msg);
     msg.run();
 }
 
 pub fn messagebox_error<T: glib::IsA<gtk::Window>>(parent: Option<&T>,
                                                    text: &str) {
-    let msg = gtk::MessageDialog::new(parent,
-                                      gtk::DialogFlags::MODAL,
-                                      gtk::MessageType::Error,
-                                      gtk::ButtonsType::Ok,
-                                      text);
-    msg.connect_response(|msg, _resp| msg.close());
+    let mut msg = gtk::MessageDialog::new(parent,
+                                          gtk::DialogFlags::MODAL,
+                                          gtk::MessageType::Error,
+                                          gtk::ButtonsType::Ok,
+                                          text);
+    prepare_message_dialog(&mut msg);
     msg.run();
 }
 
