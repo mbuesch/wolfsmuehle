@@ -19,6 +19,7 @@
 
 use anyhow as ah;
 use std::convert::TryInto;
+use std::cmp::min;
 
 pub trait ToNet32 {
     /// Convert to network byte order.
@@ -27,7 +28,7 @@ pub trait ToNet32 {
 
 pub trait ToNetStr {
     /// Convert to network byte format.
-    fn to_net(&self, bytes: &mut [u8], truncate: bool) -> ah::Result<()>;
+    fn to_net(&self, bytes: &mut [u8], truncate: bool) -> ah::Result<usize>;
 }
 
 pub trait FromNet32 {
@@ -37,7 +38,7 @@ pub trait FromNet32 {
 
 pub trait FromNetStr {
     /// Convert from network byte format.
-    fn from_net(bytes: &[u8], lossy: bool) -> ah::Result<String>;
+    fn from_net(bytes: &[u8], len: usize, lossy: bool) -> ah::Result<String>;
 }
 
 impl ToNet32 for u32 {
@@ -57,7 +58,7 @@ impl FromNet32 for u32 {
 }
 
 impl ToNetStr for str {
-    fn to_net(&self, bytes: &mut [u8], truncate: bool) -> ah::Result<()> {
+    fn to_net(&self, bytes: &mut [u8], truncate: bool) -> ah::Result<usize> {
         let mut len = self.as_bytes().len();
         if len > bytes.len() {
             if !truncate {
@@ -66,20 +67,13 @@ impl ToNetStr for str {
             len = bytes.len()
         }
         bytes[0..len].copy_from_slice(&self.as_bytes());
-        Ok(())
+        Ok(len)
     }
 }
 
 impl FromNetStr for String {
-    fn from_net(bytes: &[u8], lossy: bool) -> ah::Result<String> {
-        // Remove trailing zeros.
-        let mut len = bytes.len();
-        for i in (0..bytes.len()).rev() {
-            if bytes[i] != 0 {
-                break;
-            }
-            len -= 1;
-        }
+    fn from_net(bytes: &[u8], len: usize, lossy: bool) -> ah::Result<String> {
+        let len = min(len, bytes.len());
         if lossy {
             Ok(String::from_utf8_lossy(&bytes[0..len]).to_string())
         } else {

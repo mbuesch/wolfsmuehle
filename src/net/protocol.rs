@@ -28,6 +28,7 @@ use crate::net::data_repr::{
     ToNet32,
     ToNetStr,
 };
+use std::cmp::min;
 
 pub const MSG_BUFFER_SIZE: usize    = 0x1000;
 
@@ -186,6 +187,20 @@ macro_rules! msg_trait_define_common {
     }
 }
 
+macro_rules! extract_str {
+    ($max_len:path, $data:expr, $offset:expr) => {
+        {
+            let mut offset = $offset;
+            let len = min(u32::from_net(&$data[offset..])?, $max_len as u32);
+            offset += 4;
+            let mut bytes = [0; $max_len];
+            bytes[0..(len as usize)].copy_from_slice(&$data[offset..offset+(len as usize)]);
+            offset += $max_len;
+            (len, bytes, offset)
+        }
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////
 // Message header.
 //////////////////////////////////////////////////////////////////////////////
@@ -335,13 +350,14 @@ pub struct MsgResult {
     header:             MsgHeader,
     in_reply_to_header: MsgHeader,
     result_code:        u32,
+    message_len:        u32,
     message:            [u8; MSG_RESULT_MAXMSGLEN],
 }
 
 const MSG_RESULT_MAXMSGLEN: usize = 0x200;
 const MSG_RESULT_SIZE: u32 = MSG_HEADER_SIZE +
                              MSG_HEADER_SIZE +
-                             (1 * 4) +
+                             (2 * 4) +
                              MSG_RESULT_MAXMSGLEN as u32;
 
 pub const MSG_RESULT_OK: u32    = 0;
@@ -354,7 +370,10 @@ impl MsgResult {
                result_code:     u32,
                message:         &str) -> ah::Result<MsgResult> {
         let mut message_bytes = [0; MSG_RESULT_MAXMSGLEN];
-        message.to_net(&mut message_bytes, true).ok();
+        let message_len = match message.to_net(&mut message_bytes, true) {
+            Ok(message_len) => message_len as u32,
+            Err(_) => 0,
+        };
         Ok(MsgResult {
             header:         MsgHeader::new(MSG_MAGIC,
                                            MSG_RESULT_SIZE,
@@ -362,6 +381,7 @@ impl MsgResult {
                                            0),
             in_reply_to_header: in_reply_to_msg.get_header().clone(),
             result_code,
+            message_len,
             message: message_bytes,
         })
     }
@@ -374,14 +394,14 @@ impl MsgResult {
             offset += count;
             let result_code = u32::from_net(&data[offset..])?;
             offset += 4;
-            let mut message = [0; MSG_RESULT_MAXMSGLEN];
-            message.copy_from_slice(&data[offset..offset+MSG_RESULT_MAXMSGLEN]);
-            offset += MSG_RESULT_MAXMSGLEN;
+            let (message_len, message, offset) = extract_str!(
+                MSG_RESULT_MAXMSGLEN, data, offset);
 
             let msg = MsgResult {
                 header,
                 in_reply_to_header,
                 result_code,
+                message_len,
                 message,
             };
             assert_eq!(offset, (MSG_RESULT_SIZE - MSG_HEADER_SIZE) as usize);
@@ -408,7 +428,7 @@ impl MsgResult {
     }
 
     pub fn get_text(&self) -> String {
-        match String::from_net(&self.message, true) {
+        match String::from_net(&self.message, self.message_len as usize, true) {
             Ok(m) => m,
             Err(_) => "Failed to parse MsgResult.".to_string(),
         }
@@ -423,6 +443,7 @@ impl Message for MsgResult {
         self.header.to_bytes(&mut data);
         self.in_reply_to_header.to_bytes(&mut data);
         data.extend_from_slice(&self.result_code.to_net());
+        data.extend_from_slice(&self.message_len.to_net());
         data.extend_from_slice(&self.message);
         assert_eq!(data.len(), MSG_RESULT_SIZE as usize);
         data
@@ -435,14 +456,18 @@ impl Message for MsgResult {
 
 #[derive(Debug)]
 pub struct MsgJoin {
-    header:         MsgHeader,
-    room_name:      [u8; MSG_MAXROOMNAME],
-    player_name:    [u8; MSG_MAXPLAYERNAME],
-    player_mode:    u32,
+    header:             MsgHeader,
+    room_name_len:      u32,
+    room_name:          [u8; MSG_MAXROOMNAME],
+    player_name_len:    u32,
+    player_name:        [u8; MSG_MAXPLAYERNAME],
+    player_mode:        u32,
 }
 
 const MSG_JOIN_SIZE: u32 = MSG_HEADER_SIZE +
+                           (1 * 4) +
                            MSG_MAXROOMNAME as u32 +
+                           (1 * 4) +
                            MSG_MAXPLAYERNAME as u32 +
                            (1 * 4);
 
@@ -451,15 +476,17 @@ impl MsgJoin {
                player_name: &str,
                player_mode: u32) -> ah::Result<MsgJoin> {
         let mut room_name_bytes = [0; MSG_MAXROOMNAME];
-        room_name.to_net(&mut room_name_bytes, false)?;
+        let room_name_len = room_name.to_net(&mut room_name_bytes, false)? as u32;
         let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
-        player_name.to_net(&mut player_name_bytes, false)?;
+        let player_name_len = player_name.to_net(&mut player_name_bytes, false)? as u32;
         Ok(MsgJoin {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_JOIN_SIZE,
                                        MSG_ID_JOIN,
                                        0),
+            room_name_len,
             room_name:      room_name_bytes,
+            player_name_len,
             player_name:    player_name_bytes,
             player_mode,
         })
@@ -467,20 +494,20 @@ impl MsgJoin {
 
     pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
         if data.len() >= (MSG_JOIN_SIZE - MSG_HEADER_SIZE) as usize {
-            let mut offset = 0;
+            let offset = 0;
 
-            let mut room_name = [0; MSG_MAXROOMNAME];
-            room_name.copy_from_slice(&data[offset..offset+MSG_MAXROOMNAME]);
-            offset += MSG_MAXROOMNAME;
-            let mut player_name = [0; MSG_MAXPLAYERNAME];
-            player_name.copy_from_slice(&data[offset..offset+MSG_MAXPLAYERNAME]);
-            offset += MSG_MAXPLAYERNAME;
+            let (room_name_len, room_name, offset) = extract_str!(
+                MSG_MAXROOMNAME, data, offset);
+            let (player_name_len, player_name, mut offset) = extract_str!(
+                MSG_MAXPLAYERNAME, data, offset);
             let player_mode = u32::from_net(&data[offset..])?;
             offset += 4;
 
             let msg = MsgJoin {
                 header,
+                room_name_len,
                 room_name,
+                player_name_len,
                 player_name,
                 player_mode,
             };
@@ -492,11 +519,11 @@ impl MsgJoin {
     }
 
     pub fn get_room_name(&self) -> ah::Result<String> {
-        String::from_net(&self.room_name, false)
+        String::from_net(&self.room_name, self.room_name_len as usize, false)
     }
 
     pub fn get_player_name(&self) -> ah::Result<String> {
-        String::from_net(&self.player_name, false)
+        String::from_net(&self.player_name, self.player_name_len as usize, false)
     }
 
     pub fn get_player_mode(&self) -> u32 {
@@ -510,7 +537,9 @@ impl Message for MsgJoin {
     fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(MSG_JOIN_SIZE as usize);
         self.header.to_bytes(&mut data);
+        data.extend_from_slice(&self.room_name_len.to_net());
         data.extend_from_slice(&self.room_name);
+        data.extend_from_slice(&self.player_name_len.to_net());
         data.extend_from_slice(&self.player_name);
         data.extend_from_slice(&self.player_mode.to_net());
         assert_eq!(data.len(), MSG_JOIN_SIZE as usize);
@@ -634,11 +663,12 @@ pub struct MsgRoomList {
     header:         MsgHeader,
     total_count:    u32,
     index:          u32,
+    room_name_len:  u32,
     room_name:      [u8; MSG_MAXROOMNAME],
 }
 
 const MSG_ROOM_LIST_SIZE: u32 = MSG_HEADER_SIZE +
-                                (2 * 4) +
+                                (3 * 4) +
                                 MSG_MAXROOMNAME as u32;
 
 impl MsgRoomList {
@@ -646,7 +676,7 @@ impl MsgRoomList {
                index: u32,
                room_name: &str) -> ah::Result<MsgRoomList> {
         let mut room_name_bytes = [0; MSG_MAXROOMNAME];
-        room_name.to_net(&mut room_name_bytes, false)?;
+        let room_name_len = room_name.to_net(&mut room_name_bytes, false)? as u32;
         Ok(MsgRoomList {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_ROOM_LIST_SIZE,
@@ -654,6 +684,7 @@ impl MsgRoomList {
                                        0),
             total_count,
             index,
+            room_name_len,
             room_name: room_name_bytes,
         })
     }
@@ -666,14 +697,14 @@ impl MsgRoomList {
             offset += 4;
             let index = u32::from_net(&data[offset..])?;
             offset += 4;
-            let mut room_name = [0; MSG_MAXROOMNAME];
-            room_name.copy_from_slice(&data[offset..offset+MSG_MAXROOMNAME]);
-            offset += MSG_MAXROOMNAME;
+            let (room_name_len, room_name, offset) = extract_str!(
+                MSG_MAXROOMNAME, data, offset);
 
             let msg = MsgRoomList {
                 header,
                 total_count,
                 index,
+                room_name_len,
                 room_name,
             };
             assert_eq!(offset, (MSG_ROOM_LIST_SIZE - MSG_HEADER_SIZE) as usize);
@@ -692,7 +723,7 @@ impl MsgRoomList {
     }
 
     pub fn get_room_name(&self) -> ah::Result<String> {
-        String::from_net(&self.room_name, false)
+        String::from_net(&self.room_name, self.room_name_len as usize, false)
     }
 }
 
@@ -704,6 +735,7 @@ impl Message for MsgRoomList {
         self.header.to_bytes(&mut data);
         data.extend_from_slice(&self.total_count.to_net());
         data.extend_from_slice(&self.index.to_net());
+        data.extend_from_slice(&self.room_name_len.to_net());
         data.extend_from_slice(&self.room_name);
         assert_eq!(data.len(), MSG_ROOM_LIST_SIZE as usize);
         data
@@ -716,15 +748,16 @@ impl Message for MsgRoomList {
 
 #[derive(Debug)]
 pub struct MsgPlayerList {
-    header:         MsgHeader,
-    total_count:    u32,
-    index:          u32,
-    player_name:    [u8; MSG_MAXPLAYERNAME],
-    player_mode:    u32,
+    header:             MsgHeader,
+    total_count:        u32,
+    index:              u32,
+    player_name_len:    u32,
+    player_name:        [u8; MSG_MAXPLAYERNAME],
+    player_mode:        u32,
 }
 
 const MSG_PLAYER_LIST_SIZE: u32 = MSG_HEADER_SIZE +
-                                  (2 * 4) +
+                                  (3 * 4) +
                                   MSG_MAXPLAYERNAME as u32 +
                                   (1 * 4);
 
@@ -734,7 +767,7 @@ impl MsgPlayerList {
                player_name: &str,
                player_mode: u32) -> ah::Result<MsgPlayerList> {
         let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
-        player_name.to_net(&mut player_name_bytes, false)?;
+        let player_name_len = player_name.to_net(&mut player_name_bytes, false)? as u32;
         Ok(MsgPlayerList {
             header:     MsgHeader::new(MSG_MAGIC,
                                        MSG_PLAYER_LIST_SIZE,
@@ -742,6 +775,7 @@ impl MsgPlayerList {
                                        0),
             total_count,
             index,
+            player_name_len,
             player_name: player_name_bytes,
             player_mode,
         })
@@ -755,9 +789,8 @@ impl MsgPlayerList {
             offset += 4;
             let index = u32::from_net(&data[offset..])?;
             offset += 4;
-            let mut player_name = [0; MSG_MAXPLAYERNAME];
-            player_name.copy_from_slice(&data[offset..offset+MSG_MAXPLAYERNAME]);
-            offset += MSG_MAXPLAYERNAME;
+            let (player_name_len, player_name, mut offset) = extract_str!(
+                MSG_MAXPLAYERNAME, data, offset);
             let player_mode = u32::from_net(&data[offset..])?;
             offset += 4;
 
@@ -765,6 +798,7 @@ impl MsgPlayerList {
                 header,
                 total_count,
                 index,
+                player_name_len,
                 player_name,
                 player_mode,
             };
@@ -784,7 +818,7 @@ impl MsgPlayerList {
     }
 
     pub fn get_player_name(&self) -> ah::Result<String> {
-        String::from_net(&self.player_name, false)
+        String::from_net(&self.player_name, self.player_name_len as usize, false)
     }
 
     pub fn get_player_mode(&self) -> u32 {
@@ -800,6 +834,7 @@ impl Message for MsgPlayerList {
         self.header.to_bytes(&mut data);
         data.extend_from_slice(&self.total_count.to_net());
         data.extend_from_slice(&self.index.to_net());
+        data.extend_from_slice(&self.player_name_len.to_net());
         data.extend_from_slice(&self.player_name);
         data.extend_from_slice(&self.player_mode.to_net());
         assert_eq!(data.len(), MSG_PLAYER_LIST_SIZE as usize);
