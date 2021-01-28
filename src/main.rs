@@ -17,6 +17,8 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+#![windows_subsystem="windows"]
+
 mod board;
 mod coord;
 mod game_state;
