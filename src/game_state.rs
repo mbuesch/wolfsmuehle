@@ -57,7 +57,10 @@ use crate::coord::{
     CoordAxis,
 };
 use crate::coord;
-use crate::game_state::recorder::Recorder;
+use crate::game_state::recorder::{
+    RecordedMove,
+    Recorder,
+};
 use crate::player::{
     Player,
     PlayerList,
@@ -673,7 +676,13 @@ impl GameState {
         }
         self.recalc_stats();
         self.next_turn();
-        self.recorder.record_move(&self.moving, &to_pos, captured);
+        let recorded_move = RecordedMove {
+            move_state: self.moving,
+            to_pos,
+            captured,
+            win_state: self.get_win_state(),
+        };
+        self.recorder.record_move(&recorded_move);
         self.moving = MoveState::NoMove;
     }
 
@@ -806,6 +815,7 @@ impl GameState {
             }
 
             if changed {
+                self.recorder.reset();
                 self.recalc_stats();
             }
         }
