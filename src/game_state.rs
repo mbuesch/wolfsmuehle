@@ -574,7 +574,9 @@ impl GameState {
     }
 
     fn print_turn(&self) {
-        Print::debug(&format!("Next turn is: {:?}", self.turn));
+        if self.get_win_state() == WinState::Undecided {
+            Print::debug(&format!("Next turn is: {:?}", self.turn));
+        }
     }
 
     fn next_turn(&mut self) {
@@ -669,8 +671,9 @@ impl GameState {
                 self.set_field_state(from_pos, FieldState::Empty);
             },
         }
-        self.recorder.record_move(&self.moving, &to_pos, captured);
+        self.recalc_stats();
         self.next_turn();
+        self.recorder.record_move(&self.moving, &to_pos, captured);
         self.moving = MoveState::NoMove;
     }
 
