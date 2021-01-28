@@ -19,7 +19,6 @@
 
 use crate::board::{BOARD_WIDTH, BOARD_HEIGHT};
 use crate::coord::Coord;
-use crate::coord;
 use super::MoveState;
 
 const X_NAMES: [&str; BOARD_WIDTH as usize] = ["a", "b", "c", "d", "e"];
@@ -27,11 +26,6 @@ const Y_NAMES: [&str; BOARD_HEIGHT as usize] = ["7", "6", "5", "4", "3", "2", "1
 
 fn coord_to_recorder_pos(pos: &Coord) -> String {
     format!("{}{}", X_NAMES[pos.x as usize], Y_NAMES[pos.y as usize])
-}
-
-fn recorder_pos_to_coord(pos: &str) -> Coord {
-    //TODO
-    coord!(0, 0)
 }
 
 pub struct Recorder {
