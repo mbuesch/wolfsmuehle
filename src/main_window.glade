@@ -27,11 +27,16 @@
     <property name="can-focus">False</property>
     <property name="stock">gtk-disconnect</property>
   </object>
+  <object class="GtkImage" id="image6">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="stock">gtk-file</property>
+  </object>
   <object class="GtkApplicationWindow" id="mainwindow">
     <property name="can-focus">False</property>
     <property name="show-menubar">False</property>
     <child>
-      <!-- n-columns=2 n-rows=7 -->
+      <!-- n-columns=2 n-rows=3 -->
       <object class="GtkGrid">
         <property name="visible">True</property>
         <property name="can-focus">False</property>
@@ -202,77 +207,20 @@
           <packing>
             <property name="left-attach">0</property>
             <property name="top-attach">1</property>
-            <property name="height">5</property>
           </packing>
         </child>
         <child>
-          <object class="GtkTreeView" id="player_tree">
-            <property name="visible">True</property>
-            <property name="can-focus">True</property>
-            <property name="vexpand">True</property>
-            <property name="enable-grid-lines">both</property>
-            <child internal-child="selection">
-              <object class="GtkTreeSelection"/>
-            </child>
-          </object>
-          <packing>
-            <property name="left-attach">1</property>
-            <property name="top-attach">4</property>
-          </packing>
-        </child>
-        <child>
-          <object class="GtkTreeView" id="room_tree">
-            <property name="visible">True</property>
-            <property name="can-focus">True</property>
-            <property name="vexpand">True</property>
-            <property name="enable-grid-lines">both</property>
-            <signal name="row-activated" handler="handler_roomtree_rowactivated" swapped="no"/>
-            <child internal-child="selection">
-              <object class="GtkTreeSelection"/>
-            </child>
-          </object>
-          <packing>
-            <property name="left-attach">1</property>
-            <property name="top-attach">2</property>
-          </packing>
-        </child>
-        <child>
-          <!-- n-columns=2 n-rows=2 -->
-          <object class="GtkGrid">
+          <!-- n-columns=1 n-rows=5 -->
+          <object class="GtkGrid" id="game_meta_info_grid">
             <property name="visible">True</property>
             <property name="can-focus">False</property>
             <child>
-              <object class="GtkLabel">
-                <property name="visible">True</property>
-                <property name="can-focus">False</property>
-                <property name="label" translatable="yes">Player name: </property>
-              </object>
-              <packing>
-                <property name="left-attach">0</property>
-                <property name="top-attach">0</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkEntry" id="player_name_entry">
+              <object class="GtkTreeView" id="room_tree">
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
-                <property name="max-length">64</property>
-                <property name="input-purpose">name</property>
-                <signal name="activate" handler="handler_playername_activate" swapped="no"/>
-                <signal name="changed" handler="handler_playername_changed" swapped="no"/>
-                <signal name="editing-done" handler="handler_playername_editdone" swapped="no"/>
-                <signal name="focus-out-event" handler="handler_playername_focusout" swapped="no"/>
-              </object>
-              <packing>
-                <property name="left-attach">1</property>
-                <property name="top-attach">0</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkLabel">
-                <property name="visible">True</property>
-                <property name="can-focus">False</property>
-                <property name="label" translatable="yes">Player mode:</property>
+                <property name="vexpand">True</property>
+                <property name="enable-grid-lines">both</property>
+                <signal name="row-activated" handler="handler_roomtree_rowactivated" swapped="no"/>
               </object>
               <packing>
                 <property name="left-attach">0</property>
@@ -280,52 +228,113 @@
               </packing>
             </child>
             <child>
-              <object class="GtkComboBoxText" id="player_mode_combo">
+              <object class="GtkLabel">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
-                <property name="active">0</property>
-                <items>
-                  <item id="spectator" translatable="yes">Spectator</item>
-                  <item id="wolf" translatable="yes">Wolf</item>
-                  <item id="sheep" translatable="yes">Sheep</item>
-                  <item id="both" translatable="yes">Wolf and sheep</item>
-                </items>
-                <signal name="changed" handler="handler_playermode_changed" swapped="no"/>
+                <property name="label" translatable="yes">Players in room:</property>
+                <property name="justify">center</property>
               </object>
               <packing>
-                <property name="left-attach">1</property>
-                <property name="top-attach">1</property>
+                <property name="left-attach">0</property>
+                <property name="top-attach">2</property>
               </packing>
             </child>
-          </object>
-          <packing>
-            <property name="left-attach">1</property>
-            <property name="top-attach">5</property>
-          </packing>
-        </child>
-        <child>
-          <object class="GtkLabel">
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <property name="label" translatable="yes">Server room list:
+            <child>
+              <object class="GtkTreeView" id="player_tree">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="vexpand">True</property>
+                <property name="enable-grid-lines">both</property>
+              </object>
+              <packing>
+                <property name="left-attach">0</property>
+                <property name="top-attach">3</property>
+              </packing>
+            </child>
+            <child>
+              <!-- n-columns=2 n-rows=2 -->
+              <object class="GtkGrid">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">Player name: </property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkEntry" id="player_name_entry">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="max-length">64</property>
+                    <property name="input-purpose">name</property>
+                    <signal name="activate" handler="handler_playername_activate" swapped="no"/>
+                    <signal name="changed" handler="handler_playername_changed" swapped="no"/>
+                    <signal name="editing-done" handler="handler_playername_editdone" swapped="no"/>
+                    <signal name="focus-out-event" handler="handler_playername_focusout" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">Player mode:</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkComboBoxText" id="player_mode_combo">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="active">0</property>
+                    <items>
+                      <item id="spectator" translatable="yes">Spectator</item>
+                      <item id="wolf" translatable="yes">Wolf</item>
+                      <item id="sheep" translatable="yes">Sheep</item>
+                      <item id="both" translatable="yes">Wolf and sheep</item>
+                    </items>
+                    <signal name="changed" handler="handler_playermode_changed" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="left-attach">0</property>
+                <property name="top-attach">4</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Server room list:
 (double-click to join)</property>
-            <property name="justify">center</property>
+                <property name="justify">center</property>
+              </object>
+              <packing>
+                <property name="left-attach">0</property>
+                <property name="top-attach">0</property>
+              </packing>
+            </child>
           </object>
           <packing>
             <property name="left-attach">1</property>
             <property name="top-attach">1</property>
-          </packing>
-        </child>
-        <child>
-          <object class="GtkLabel">
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <property name="label" translatable="yes">Players in room:</property>
-            <property name="justify">center</property>
-          </object>
-          <packing>
-            <property name="left-attach">1</property>
-            <property name="top-attach">3</property>
           </packing>
         </child>
         <child>
@@ -336,16 +345,11 @@
           </object>
           <packing>
             <property name="left-attach">0</property>
-            <property name="top-attach">6</property>
+            <property name="top-attach">2</property>
             <property name="width">2</property>
           </packing>
         </child>
       </object>
     </child>
-  </object>
-  <object class="GtkImage" id="image6">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="stock">gtk-file</property>
   </object>
 </interface>

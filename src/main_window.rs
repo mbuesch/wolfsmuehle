@@ -57,9 +57,10 @@ pub struct MainWindow {
     button_connect:         gtk::MenuItem,
     button_disconnect:      gtk::MenuItem,
     status_label:           gtk::Label,
+    game_meta_info_grid:    gtk::Grid,
     draw:                   Rc<RefCell<DrawingArea>>,
     game:                   Rc<RefCell<GameState>>,
-    game_meta_view:       Rc<RefCell<GameMetaView>>,
+    game_meta_view:         Rc<RefCell<GameMetaView>>,
 }
 
 impl MainWindow {
@@ -82,6 +83,7 @@ impl MainWindow {
         button_connect.set_sensitive(connect_to_server.is_none());
         button_disconnect.set_sensitive(connect_to_server.is_some());
         let status_label: gtk::Label = builder.get_object("status_label").unwrap();
+        let game_meta_info_grid: gtk::Grid = builder.get_object("game_meta_info_grid").unwrap();
 
         // Create game state.
         let game = Rc::new(RefCell::new(GameState::new(player_mode,
@@ -90,6 +92,9 @@ impl MainWindow {
             let mut game = game.borrow_mut();
             game.client_connect(&connect_to_server.unwrap())?;
             game.client_join_room(&room_name)?;
+            game_meta_info_grid.show();
+        } else {
+            game_meta_info_grid.hide();
         }
 
         // Create player state area.
@@ -114,6 +119,7 @@ impl MainWindow {
             button_connect,
             button_disconnect,
             status_label,
+            game_meta_info_grid,
             draw,
             game,
             game_meta_view,
@@ -299,6 +305,7 @@ impl MainWindow {
                 self.game_meta_view.borrow_mut().clear_player_list();
                 self.button_connect.set_sensitive(false);
                 self.button_disconnect.set_sensitive(true);
+                self.game_meta_info_grid.show();
             }
         }
         dlg.close();
@@ -313,6 +320,7 @@ impl MainWindow {
         self.game_meta_view.borrow_mut().clear_player_list();
         self.button_connect.set_sensitive(true);
         self.button_disconnect.set_sensitive(false);
+        self.game_meta_info_grid.hide();
 
         self.update_status();
     }
