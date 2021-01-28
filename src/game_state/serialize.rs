@@ -79,7 +79,12 @@ impl GameState {
 
         // Set the local game state to the message contents.
         self.reset_game(true);
-        self.client_handle_rx_messages(messages);
+        for msg in messages {
+            match msg.get_message() {
+                MsgType::GameState(msg) => { self.read_state_message(&msg, true)?; },
+                _ => (),
+            }
+        }
         // Send the local game state to the server (if any).
         self.client_send_full_gamestate()?;
 
