@@ -72,15 +72,25 @@ use crate::random::random_alphanum;
 use std::fmt;
 use std::time;
 
-const CAPTURE_OFFSETS: [Coord; 8] = [
+/// All possible relative move offsets that could lead to a capture.
+const CAPTURE_OFFSETS: [Coord; 12] = [
+    // horizontal
     coord!(-2, 0),
-    coord!(-2, -2),
-    coord!(0, -2),
-    coord!(2, -2),
     coord!(2, 0),
-    coord!(2, 2),
+    // vertical
+    coord!(0, -2),
     coord!(0, 2),
+    // diagonal
+    coord!(-2, -2),
     coord!(-2, 2),
+    coord!(2, -2),
+    coord!(2, 2),
+    // left barn corner
+    coord!(1, -2),
+    coord!(-1, 2),
+    // right barn corner
+    coord!(-1, -2),
+    coord!(1, 2),
 ];
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -262,7 +272,7 @@ impl GameState {
             i_am_moving:        false,
             stats,
             turn:               Turn::Sheep,
-            just_captured:        None,
+            just_captured:      None,
             orig_sheep_count:   0,
             recorder:           Recorder::new(),
             client:             None,
