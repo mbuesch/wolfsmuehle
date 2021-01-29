@@ -238,10 +238,10 @@ impl DrawingArea {
         // Draw the captured tokens.
         let stats = game.get_stats();
         let mut y = 25.0;
-        let x = self.widget.get_allocated_width() as f64 - 25.0;
+        let x = self.widget.get_allocated_width() as f64 - 35.0;
         for _ in 0..stats.sheep_captured {
             self.draw_token_sheep_pix(cairo, (x, y), false);
-            y += 10.0;
+            y += 20.0;
         }
 
         // Draw the moving token.
