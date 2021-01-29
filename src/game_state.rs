@@ -379,7 +379,7 @@ impl GameState {
             if sheep_win {
                 WinState::Sheep
             } else {
-                //TODO check: wolf is unable to move -> wins.
+                //TODO check: wolf is unable to move -> sheep win.
                 WinState::Undecided
             }
         }
@@ -487,8 +487,7 @@ impl GameState {
         if from_state == FieldState::Sheep &&
            to_pos.y > from_pos.y {
             // Invalid sheep backward move.
-        } else if from_pos.x != to_pos.x &&
-                  from_pos.y != to_pos.y {
+        } else if from_pos.x != to_pos.x && from_pos.y != to_pos.y {
             // Diagonal move.
             if from_state == FieldState::Wolf {
                 if is_on_main_diag(from_pos) && is_on_main_diag(to_pos) {
@@ -502,24 +501,19 @@ impl GameState {
                             result = ValidationResult::ValidBeat(center_pos)
                         }
                     }
-                } else if (from_pos.x == 1 && from_pos.y == 1 &&
-                             to_pos.x == 2 &&   to_pos.y == 0) ||
-                          (from_pos.x == 3 && from_pos.y == 1 &&
-                             to_pos.x == 2 &&   to_pos.y == 0) ||
-                          (from_pos.x == 2 && from_pos.y == 0 &&
-                             to_pos.x == 1 &&   to_pos.y == 1) ||
-                          (from_pos.x == 2 && from_pos.y == 0 &&
-                             to_pos.x == 3 &&   to_pos.y == 1) {
+                } else if (from_pos == coord!(1, 1) && to_pos == coord!(2, 0)) ||
+                          (from_pos == coord!(3, 1) && to_pos == coord!(2, 0)) ||
+                          (from_pos == coord!(2, 0) && to_pos == coord!(1, 1)) ||
+                          (from_pos == coord!(2, 0) && to_pos == coord!(3, 1)) {
                     // Wolf move to/from barn top.
                     result = ValidationResult::Valid;
                 }
             } else if from_state == FieldState::Sheep &&
-                      ((from_pos.x == 1 && from_pos.y == 1) ||
-                       (from_pos.x == 3 && from_pos.y == 1)) {
+                      (from_pos == coord!(1, 1) || from_pos == coord!(3, 1)) {
                 // Sheep move to barn top.
                 result = ValidationResult::Valid;
             }
-        } else if from_pos.y == to_pos.y {
+        } else if from_pos.x != to_pos.x && from_pos.y == to_pos.y {
             // Horizontal move.
             if distx.abs() == 1 {
                 result = ValidationResult::Valid;
@@ -530,7 +524,7 @@ impl GameState {
                     result = ValidationResult::ValidBeat(center_pos)
                 }
             }
-        } else if from_pos.x == to_pos.x {
+        } else if from_pos.x == to_pos.x && from_pos.y != to_pos.y {
             // Vertical move.
             if disty.abs() == 1 {
                 result = ValidationResult::Valid;
