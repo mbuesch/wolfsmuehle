@@ -72,7 +72,7 @@ use crate::random::random_alphanum;
 use std::fmt;
 use std::time;
 
-const BEAT_OFFSETS: [Coord; 8] = [
+const CAPTURE_OFFSETS: [Coord; 8] = [
     coord!(-2, 0),
     coord!(-2, -2),
     coord!(0, -2),
@@ -200,14 +200,14 @@ fn num_to_turn(turn: u32) -> ah::Result<Turn> {
 enum ValidationResult {
     Invalid,
     Valid,
-    ValidBeat(Coord),
+    ValidCapture(Coord),
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct Stats {
     pub wolves:         u8,
     pub sheep:          u8,
-    pub sheep_beaten:   u8,
+    pub sheep_captured: u8,
 }
 
 pub struct GameState {
@@ -221,7 +221,7 @@ pub struct GameState {
     i_am_moving:        bool,
     stats:              Stats,
     turn:               Turn,
-    just_beaten:        Option<Coord>,
+    just_captured:      Option<Coord>,
     orig_sheep_count:   u8,
     recorder:           Recorder,
 
@@ -242,7 +242,7 @@ impl GameState {
         let stats = Stats {
             wolves:         0,
             sheep:          0,
-            sheep_beaten:   0,
+            sheep_captured: 0,
         };
         let room_player_list = PlayerList::new(vec![
             Player::new("Player".to_string(),
@@ -262,7 +262,7 @@ impl GameState {
             i_am_moving:        false,
             stats,
             turn:               Turn::Sheep,
-            just_beaten:        None,
+            just_captured:        None,
             orig_sheep_count:   0,
             recorder:           Recorder::new(),
             client:             None,
@@ -302,7 +302,7 @@ impl GameState {
         self.moving = MoveState::NoMove;
         self.i_am_moving = false;
         self.turn = Turn::Sheep;
-        self.just_beaten = None;
+        self.just_captured = None;
 
         self.recorder.reset();
         self.recalc_stats();
@@ -350,7 +350,7 @@ impl GameState {
                     (),
             }
         }
-        self.stats.sheep_beaten = self.orig_sheep_count - self.stats.sheep;
+        self.stats.sheep_captured = self.orig_sheep_count - self.stats.sheep;
     }
 
     /// Get statistics.
@@ -415,19 +415,19 @@ impl GameState {
         self.moving
     }
 
-    /// Beat one token at pos.
-    fn beat(&mut self, _from_pos: Coord, to_pos: Coord, beat_pos: Coord) {
-        match self.get_field_state(beat_pos) {
+    /// Capture one token at pos.
+    fn capture(&mut self, _from_pos: Coord, to_pos: Coord, capture_pos: Coord) {
+        match self.get_field_state(capture_pos) {
             FieldState::Unused | FieldState::Empty =>
-                Print::error("Internal error: Cannot beat empty fields."),
+                Print::error("Internal error: Cannot capture empty fields."),
             FieldState::Wolf =>
-                Print::error("Internal error: Cannot beat wolves."),
+                Print::error("Internal error: Cannot capture wolves."),
             FieldState::Sheep => {
                 self.stats.sheep -= 1;
-                self.stats.sheep_beaten += 1;
-                self.just_beaten = Some(to_pos);
-                self.set_field_state(beat_pos, FieldState::Empty);
-                Print::debug(&format!("Beaten sheep at {}", beat_pos));
+                self.stats.sheep_captured += 1;
+                self.just_captured = Some(to_pos);
+                self.set_field_state(capture_pos, FieldState::Empty);
+                Print::debug(&format!("Captured sheep at {}", capture_pos));
             },
         }
     }
@@ -497,8 +497,8 @@ impl GameState {
                         result = ValidationResult::Valid;
                     } else if distx.abs() == 2 && disty.abs() == 2 {
                         if is_opposite_token(from_state, center_state) {
-                            // Beaten.
-                            result = ValidationResult::ValidBeat(center_pos);
+                            // Captured.
+                            result = ValidationResult::ValidCapture(center_pos);
                         }
                     }
                 } else if (from_pos == coord!(1, 1) && to_pos == coord!(2, 0)) ||
@@ -510,14 +510,14 @@ impl GameState {
                 } else if (from_pos == coord!(1, 2) && to_pos == coord!(2, 0)) ||
                           (from_pos == coord!(2, 0) && to_pos == coord!(1, 2)) {
                     if self.get_field_state(coord!(1, 1)) == FieldState::Sheep {
-                        // Beaten at top-left corner of barn.
-                        result = ValidationResult::ValidBeat(coord!(1, 1));
+                        // Captured at top-left corner of barn.
+                        result = ValidationResult::ValidCapture(coord!(1, 1));
                     }
                 } else if (from_pos == coord!(3, 2) && to_pos == coord!(2, 0)) ||
                           (from_pos == coord!(2, 0) && to_pos == coord!(3, 2)) {
                     if self.get_field_state(coord!(3, 1)) == FieldState::Sheep {
-                        // Beaten at top-right corner of barn.
-                        result = ValidationResult::ValidBeat(coord!(3, 1));
+                        // Captured at top-right corner of barn.
+                        result = ValidationResult::ValidCapture(coord!(3, 1));
                     }
                 }
             } else if from_state == FieldState::Sheep &&
@@ -532,8 +532,8 @@ impl GameState {
             } else if distx.abs() == 2 {
                 if from_state == FieldState::Wolf &&
                    is_opposite_token(from_state, center_state) {
-                    // Beaten.
-                    result = ValidationResult::ValidBeat(center_pos);
+                    // Captured.
+                    result = ValidationResult::ValidCapture(center_pos);
                 }
             }
         } else if from_pos.x == to_pos.x && from_pos.y != to_pos.y {
@@ -543,8 +543,8 @@ impl GameState {
             } else if disty.abs() == 2 {
                 if from_state == FieldState::Wolf &&
                    is_opposite_token(from_state, center_state) {
-                    // Beaten.
-                    result = ValidationResult::ValidBeat(center_pos);
+                    // Captured.
+                    result = ValidationResult::ValidCapture(center_pos);
                 }
             }
         } else { // Can never happen.
@@ -564,10 +564,10 @@ impl GameState {
                         ValidationResult::Invalid |
                         ValidationResult::Valid => {
                             // Wolf chain jump is only valid,
-                            // if it beats more sheep.
+                            // if it captures more sheep.
                             return ValidationResult::Invalid;
                         },
-                        ValidationResult::ValidBeat(_) =>
+                        ValidationResult::ValidCapture(_) =>
                             (), // Ok
                     }
                 }
@@ -590,14 +590,14 @@ impl GameState {
 
     fn next_turn(&mut self) {
         let calc_wolf_turn = || {
-            // The next turn is sheep, except if a wolf has just beaten a sheep
-            // and it can beat another one.
-            if let Some(wolf_pos) = self.just_beaten {
-                for offset in &BEAT_OFFSETS {
+            // The next turn is sheep, except if a wolf has just captured a sheep
+            // and it can capture another one.
+            if let Some(wolf_pos) = self.just_captured {
+                for offset in &CAPTURE_OFFSETS {
                     let to_pos = wolf_pos + *offset;
                     match self.validate_move(wolf_pos, to_pos) {
-                        ValidationResult::ValidBeat(_) => {
-                            Print::debug("Wolf can beat more sheep.");
+                        ValidationResult::ValidCapture(_) => {
+                            Print::debug("Wolf can capture more sheep.");
                             return Turn::WolfchainOrSheep;
                         },
                         ValidationResult::Invalid | ValidationResult::Valid =>
@@ -624,7 +624,7 @@ impl GameState {
             Turn::Wolf =>
                 self.turn = calc_wolf_turn(),
         }
-        self.just_beaten = None;
+        self.just_captured = None;
         self.print_turn();
     }
 
@@ -724,9 +724,9 @@ impl GameState {
                         self.do_move_put(pos, false);
                         Ok(())
                     },
-                    ValidationResult::ValidBeat(beat_pos) => {
+                    ValidationResult::ValidCapture(capture_pos) => {
                         self.client_send_move_put(pos, token_id)?;
-                        self.beat(from_pos, pos, beat_pos);
+                        self.capture(from_pos, pos, capture_pos);
                         self.do_move_put(pos, true);
                         Ok(())
                     },
