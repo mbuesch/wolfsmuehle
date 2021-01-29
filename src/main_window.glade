@@ -221,6 +221,9 @@
                 <property name="vexpand">True</property>
                 <property name="enable-grid-lines">both</property>
                 <signal name="row-activated" handler="handler_roomtree_rowactivated" swapped="no"/>
+                <child internal-child="selection">
+                  <object class="GtkTreeSelection"/>
+                </child>
               </object>
               <packing>
                 <property name="left-attach">0</property>
@@ -245,6 +248,9 @@
                 <property name="can-focus">True</property>
                 <property name="vexpand">True</property>
                 <property name="enable-grid-lines">both</property>
+                <child internal-child="selection">
+                  <object class="GtkTreeSelection"/>
+                </child>
               </object>
               <packing>
                 <property name="left-attach">0</property>
@@ -260,7 +266,7 @@
                   <object class="GtkLabel">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
-                    <property name="label" translatable="yes">Player name: </property>
+                    <property name="label" translatable="yes">My name: </property>
                   </object>
                   <packing>
                     <property name="left-attach">0</property>
@@ -287,7 +293,7 @@
                   <object class="GtkLabel">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
-                    <property name="label" translatable="yes">Player mode:</property>
+                    <property name="label" translatable="yes">My mode:</property>
                   </object>
                   <packing>
                     <property name="left-attach">0</property>

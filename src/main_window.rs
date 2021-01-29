@@ -271,6 +271,7 @@ impl MainWindow {
                                           gtk::ButtonsType::OkCancel,
                                           "Connect to a game server.\n\
                                            Enter the server address here:");
+        dlg.set_default_response(gtk::ResponseType::Ok);
         let content = dlg.get_content_area();
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
@@ -278,12 +279,14 @@ impl MainWindow {
         let entry_addr = gtk::Entry::new();
         entry_addr.set_size_request(300, 0);
         entry_addr.set_text("127.0.0.1");
+        entry_addr.set_activates_default(true);
         hbox.add(&entry_addr);
 
         hbox.add(&gtk::Label::new(Some("Port:")));
         let entry_port = gtk::Entry::new();
         entry_port.set_size_request(300, 0);
         entry_port.set_text("5596");
+        entry_port.set_activates_default(true);
         hbox.add(&entry_port);
 
         content.pack_end(&hbox, false, false, 0);
