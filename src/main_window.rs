@@ -112,7 +112,7 @@ impl MainWindow {
         // Create drawing area.
         let draw = Rc::new(RefCell::new(DrawingArea::new(
             builder.get_object("drawing_area").unwrap(),
-            Rc::clone(&game))));
+            Rc::clone(&game))?));
 
         let mainwnd = Rc::new(RefCell::new(MainWindow {
             appwindow,

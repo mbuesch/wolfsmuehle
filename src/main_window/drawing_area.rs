@@ -83,27 +83,69 @@ enum MovingToken {
     Sheep(f64, f64),
 }
 
+fn conv_xpm(data: &str) -> ah::Result<Vec<&str>> {
+    let mut ret = vec![];
+    for line in data.split('\n') {
+        if line.starts_with("\"") {
+            let start = line.find("\"")
+                .ok_or(ah::format_err!("conv_xpm: Start not found."))?;
+            let end = line.rfind("\"")
+                .ok_or(ah::format_err!("conv_xpm: End not found."))?;
+            ret.push(&line[start+1..end]);
+        }
+    }
+    Ok(ret)
+}
+
 pub struct DrawingArea {
-    widget:         gtk::DrawingArea,
-    game:           Rc<RefCell<GameState>>,
-    pending_join:   bool,
-    moving_token:   MovingToken,
+    widget:                 gtk::DrawingArea,
+    wolf_pixbuf:            gdk_pixbuf::Pixbuf,
+    wolf_moving_pixbuf:     gdk_pixbuf::Pixbuf,
+    sheep_pixbuf:           gdk_pixbuf::Pixbuf,
+    sheep_moving_pixbuf:    gdk_pixbuf::Pixbuf,
+    game:                   Rc<RefCell<GameState>>,
+    pending_join:           bool,
+    moving_token:           MovingToken,
 }
 
 impl DrawingArea {
     pub fn new(widget:  gtk::DrawingArea,
-               game:    Rc<RefCell<GameState>>) -> DrawingArea {
+               game:    Rc<RefCell<GameState>>) -> ah::Result<DrawingArea> {
         widget.add_events(gdk::EventMask::POINTER_MOTION_MASK |
                           gdk::EventMask::POINTER_MOTION_HINT_MASK |
                           gdk::EventMask::BUTTON_MOTION_MASK |
                           gdk::EventMask::BUTTON_PRESS_MASK |
                           gdk::EventMask::BUTTON_RELEASE_MASK);
-        DrawingArea {
+
+        let wolf_xpm = conv_xpm(&include_str!("wolf.xpm"))?;
+        let sheep_xpm = conv_xpm(&include_str!("sheep.xpm"))?;
+
+        let wolf_pixbuf = gdk_pixbuf::Pixbuf::from_xpm_data(&wolf_xpm.as_slice())
+                            .scale_simple(70, 70, gdk_pixbuf::InterpType::Hyper)
+                            .ok_or(ah::format_err!("Failed to scale wolf image."))?;
+        let wolf_moving_pixbuf = wolf_pixbuf.copy()
+                            .ok_or(ah::format_err!("Failed to copy image."))?;
+        wolf_moving_pixbuf.saturate_and_pixelate(&wolf_moving_pixbuf,
+                                                 0.0, true);
+
+        let sheep_pixbuf = gdk_pixbuf::Pixbuf::from_xpm_data(sheep_xpm.as_slice())
+                            .scale_simple(50, 50, gdk_pixbuf::InterpType::Hyper)
+                            .ok_or(ah::format_err!("Failed to scale sheep image."))?;
+        let sheep_moving_pixbuf = sheep_pixbuf.copy()
+                            .ok_or(ah::format_err!("Failed to copy image."))?;
+        sheep_moving_pixbuf.saturate_and_pixelate(&sheep_moving_pixbuf,
+                                                  0.0, true);
+
+        Ok(DrawingArea {
             widget,
+            wolf_pixbuf,
+            wolf_moving_pixbuf,
+            sheep_pixbuf,
+            sheep_moving_pixbuf,
             game,
             pending_join: false,
             moving_token: MovingToken::NoToken,
-        }
+        })
     }
 
     pub fn redraw(&self) {
@@ -118,7 +160,7 @@ impl DrawingArea {
     }
 
     fn draw_background(&self, cairo: &cairo::Context) {
-        cairo.set_source_rgb(0.1, 0.1, 0.1);
+        cairo.set_source_rgb(0.5, 0.5, 0.5);
         cairo.set_line_width(0.0);
         cairo.rectangle(0.0,
                         0.0,
@@ -128,7 +170,7 @@ impl DrawingArea {
     }
 
     fn draw_board_lines(&self, cairo: &cairo::Context) {
-        cairo.set_source_rgb(0.75, 0.75, 0.75);
+        cairo.set_source_rgb(0.1, 0.1, 0.1);
         cairo.set_line_width(4.0);
         for (from, to) in BOARD_LINES.iter() {
             cairo.move_to(pos2pix(from).0, pos2pix(from).1);
@@ -139,53 +181,27 @@ impl DrawingArea {
 
     fn draw_token(&self, cairo: &cairo::Context,
                   pos: (f64, f64),
-                  color_background: (f64, f64, f64),
-                  color_foreground: (f64, f64, f64),
-                  text: &str,
-                  moving: bool) {
-        let fact = if moving { 0.25 } else { 1.0 };
-
-        cairo.set_source_rgb(color_background.0 * fact,
-                             color_background.1 * fact,
-                             color_background.2 * fact);
-        cairo.arc(pos.0, pos.1, 20.0, 0.0, 2.0 * std::f64::consts::PI);
-        cairo.fill();
-        cairo.set_line_width(1.0);
-        cairo.set_source_rgb(0.0, 0.0, 0.0);
-        cairo.arc(pos.0, pos.1, 20.0, 0.0, 2.0 * std::f64::consts::PI);
-        cairo.stroke();
-
-        cairo.set_source_rgb(color_foreground.0 * fact,
-                             color_foreground.1 * fact,
-                             color_foreground.2 * fact);
-        cairo.set_font_size(16.0);
-        cairo.select_font_face("Serif",
-                               cairo::FontSlant::Normal,
-                               cairo::FontWeight::Bold);
-        let extents = cairo.text_extents(text);
-        cairo.move_to(pos.0 - (extents.width / 2.0),
-                      pos.1 + (extents.height / 2.0));
-        cairo.show_text(text);
+                  pixbuf: &gdk_pixbuf::Pixbuf) {
+        cairo.set_source_pixbuf(&pixbuf,
+                                pos.0 - (pixbuf.get_width() / 2) as f64,
+                                pos.1 - (pixbuf.get_height() / 2) as f64);
+        cairo.paint();
     }
 
     fn draw_token_wolf_pix(&self, cairo: &cairo::Context,
                            pos: (f64, f64), moving: bool) {
+        let pixbuf = if moving { &self.wolf_moving_pixbuf } else { &self.wolf_pixbuf };
         self.draw_token(cairo,
                         pos,
-                        (1.0, 1.0, 0.0),
-                        (1.0, 0.0, 0.0),
-                        "[W]",
-                        moving);
+                        pixbuf);
     }
 
     fn draw_token_sheep_pix(&self, cairo: &cairo::Context,
                             pos: (f64, f64), moving: bool) {
+        let pixbuf = if moving { &self.sheep_moving_pixbuf } else { &self.sheep_pixbuf };
         self.draw_token(cairo,
                         pos,
-                        (1.0, 1.0, 1.0),
-                        (0.0, 0.0, 1.0),
-                        "[S]",
-                        moving);
+                        pixbuf);
     }
 
     fn draw_token_wolf(&self, cairo: &cairo::Context,

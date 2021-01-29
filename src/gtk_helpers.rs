@@ -17,7 +17,10 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+pub use gdk::prelude::*;
 pub use gdk;
+pub use gdk_pixbuf::prelude::*;
+pub use gdk_pixbuf;
 pub use gio::prelude::*;
 pub use glib;
 pub use gtk::prelude::*;
