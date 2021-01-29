@@ -498,7 +498,7 @@ impl GameState {
                     } else if distx.abs() == 2 && disty.abs() == 2 {
                         if is_opposite_token(from_state, center_state) {
                             // Beaten.
-                            result = ValidationResult::ValidBeat(center_pos)
+                            result = ValidationResult::ValidBeat(center_pos);
                         }
                     }
                 } else if (from_pos == coord!(1, 1) && to_pos == coord!(2, 0)) ||
@@ -507,6 +507,18 @@ impl GameState {
                           (from_pos == coord!(2, 0) && to_pos == coord!(3, 1)) {
                     // Wolf move to/from barn top.
                     result = ValidationResult::Valid;
+                } else if (from_pos == coord!(1, 2) && to_pos == coord!(2, 0)) ||
+                          (from_pos == coord!(2, 0) && to_pos == coord!(1, 2)) {
+                    if self.get_field_state(coord!(1, 1)) == FieldState::Sheep {
+                        // Beaten at top-left corner of barn.
+                        result = ValidationResult::ValidBeat(coord!(1, 1));
+                    }
+                } else if (from_pos == coord!(3, 2) && to_pos == coord!(2, 0)) ||
+                          (from_pos == coord!(2, 0) && to_pos == coord!(3, 2)) {
+                    if self.get_field_state(coord!(3, 1)) == FieldState::Sheep {
+                        // Beaten at top-right corner of barn.
+                        result = ValidationResult::ValidBeat(coord!(3, 1));
+                    }
                 }
             } else if from_state == FieldState::Sheep &&
                       (from_pos == coord!(1, 1) || from_pos == coord!(3, 1)) {
@@ -521,7 +533,7 @@ impl GameState {
                 if from_state == FieldState::Wolf &&
                    is_opposite_token(from_state, center_state) {
                     // Beaten.
-                    result = ValidationResult::ValidBeat(center_pos)
+                    result = ValidationResult::ValidBeat(center_pos);
                 }
             }
         } else if from_pos.x == to_pos.x && from_pos.y != to_pos.y {
@@ -532,7 +544,7 @@ impl GameState {
                 if from_state == FieldState::Wolf &&
                    is_opposite_token(from_state, center_state) {
                     // Beaten.
-                    result = ValidationResult::ValidBeat(center_pos)
+                    result = ValidationResult::ValidBeat(center_pos);
                 }
             }
         } else { // Can never happen.
