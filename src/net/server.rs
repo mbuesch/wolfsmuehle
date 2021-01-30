@@ -17,6 +17,8 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+mod multicast;
+
 use anyhow as ah;
 use std::collections::HashMap;
 use std::cmp::{Ord, PartialOrd, Eq, PartialEq};
@@ -34,6 +36,7 @@ use std::net::{
 use std::sync::{Mutex, Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
+use std::time::Duration;
 use crate::game_state::GameState;
 use crate::player::{
     Player,
@@ -62,6 +65,13 @@ use crate::net::{
         message_from_bytes,
         net_sync,
     },
+    server::{
+        multicast::{
+            MulticastPacket,
+            MulticastRouter,
+            MulticastSubscriber,
+        },
+    },
 };
 use itertools::Itertools;
 
@@ -72,6 +82,7 @@ type ServerRoomMap = HashMap<String, ServerRoom>;
 /// Server instance thread corresponding to one connected client.
 struct ServerInstance<'a> {
     stream:         &'a mut TcpStream,
+    mc_sub:         MulticastSubscriber,
     sequence:       u32,
     peer_addr:      SocketAddr,
     rooms:          Arc<Mutex<ServerRoomMap>>,
@@ -101,11 +112,18 @@ macro_rules! do_leave {
 
 impl<'a> ServerInstance<'a> {
     fn new(stream: &'a mut TcpStream,
+           mc_sub: MulticastSubscriber,
            rooms: Arc<Mutex<ServerRoomMap>>) -> ah::Result<ServerInstance<'a>> {
+
         let peer_addr = stream.peer_addr()?;
+
         stream.set_nodelay(true)?;
+        stream.set_read_timeout(Some(Duration::from_millis(10)))?;
+        stream.set_write_timeout(Some(Duration::from_millis(5000)))?;
+
         Ok(ServerInstance {
             stream,
+            mc_sub,
             sequence:       0,
             peer_addr,
             rooms,
@@ -123,7 +141,7 @@ impl<'a> ServerInstance<'a> {
         Ok(())
     }
 
-    fn send_msg(&mut self, msg: &mut impl Message) -> ah::Result<()> {
+    fn send_msg(&mut self, msg: &mut dyn Message) -> ah::Result<()> {
         msg.get_header_mut().set_sequence(self.sequence);
         self.send(&msg.to_bytes())?;
         self.sequence = self.sequence.wrapping_add(1);
@@ -202,6 +220,32 @@ impl<'a> ServerInstance<'a> {
                         return Err(ah::format_err!("{}", text));
                     },
                 }
+            },
+            MsgType::Say(msg) => {
+                drop(rooms);
+                let mut msg = msg.clone();
+
+                // Override the player name. It might be forged.
+                if let Some(player_name) = self.player_name.as_ref() {
+                    msg.set_player_name(player_name)?;
+                } else {
+                    msg.set_player_name("")?;
+                }
+
+                // Set the room name as meta data.
+                let meta_data = if let Some(room_name) = self.joined_room.as_ref() {
+                    room_name.as_bytes().to_vec()
+                } else {
+                    vec![]
+                };
+
+                // Forward the message to all other connected clients.
+                self.mc_sub.send_broadcast(MulticastPacket {
+                    data: msg.to_bytes(),
+                    meta_data,
+                    include_self: true
+                });
+                self.send_msg(&mut MsgResult::new(&msg, MSG_RESULT_OK, "")?)?;
             },
             _ => {
                 return Err(ah::format_err!("handle_rx_room_message: Received invalid message."));
@@ -350,7 +394,8 @@ impl<'a> ServerInstance<'a> {
             MsgType::GameState(_) |
             MsgType::ReqPlayerList(_) |
             MsgType::PlayerList(_) |
-            MsgType::Move(_) => {
+            MsgType::Move(_) |
+            MsgType::Say(_) => {
                 self.handle_rx_room_message(&mut msg_type)?;
             },
         }
@@ -377,6 +422,51 @@ impl<'a> ServerInstance<'a> {
             Ok((_msg_len, None)) => {
                 // Not enough data for this message, yet.
                 Ok(None)
+            },
+            Err(e) => {
+                Err(e)
+            },
+        }
+    }
+
+    fn handle_rx_multicast_message(&mut self, msg_type: MsgType) -> ah::Result<()> {
+        match msg_type {
+            MsgType::Say(msg) => {
+                if self.joined_room.is_some() {
+                    // Got a chat message from another client. Forward it to our client.
+                    self.send_msg(&mut msg.clone())?;
+                }
+                Ok(())
+            }
+            other =>
+                Err(ah::format_err!("Received unexpected multicast: {:?}", other)),
+        }
+    }
+
+    fn handle_rx_multicast_data(&mut self, pack: &MulticastPacket) -> ah::Result<()> {
+        if let Some(joined_room) = self.joined_room.as_ref() {
+            if pack.meta_data != joined_room.as_bytes() {
+                // We're not in the destination room. Discard it.
+                return Ok(());
+            }
+        } else {
+            if !pack.meta_data.is_empty() {
+                // We're not in the destination room. Discard it.
+                return Ok(());
+            }
+        }
+
+        if DEBUG_RAW {
+            Print::debug(&format!("Multicast RX: {:?}", pack.data));
+        }
+        match message_from_bytes(&pack.data) {
+            Ok((_msg_len, Some(msg))) => {
+                let message = msg.get_message();
+                self.handle_rx_multicast_message(message)?;
+                Ok(())
+            },
+            Ok((_msg_len, None)) => {
+                Err(ah::format_err!("Multicast: Received incomplete message."))
             },
             Err(e) => {
                 Err(e)
@@ -448,10 +538,24 @@ impl<'a> ServerInstance<'a> {
                         }
                     }
                 },
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    buffer.truncate(tail_len);
+                },
                 Err(e) => {
                     Print::error(&format!("Server thread error: {}", e));
                     break;
                 },
+            }
+
+            // Check if we received a multicast from other instances.
+            loop {
+                if let Some(pack) = self.mc_sub.receive() {
+                    if let Err(e) = self.handle_rx_multicast_data(&pack) {
+                        Print::error(&format!("Server multicast error: {}", e));
+                    }
+                } else {
+                    break;
+                }
             }
         }
         self.do_leave();
@@ -587,7 +691,10 @@ impl Server {
     pub fn new(addr: impl ToSocketAddrs,
                max_conns: u16,
                restrict_player_modes: bool) -> ah::Result<Server> {
+
         let listener = TcpListener::bind(addr)?;
+        listener.set_nonblocking(true)?;
+
         Ok(Server {
             listener,
             max_conns:      max_conns as usize,
@@ -613,15 +720,18 @@ impl Server {
             }
         }
 
+        let mut mc_router = MulticastRouter::new();
+
         for stream in self.listener.incoming() {
             match stream {
                 Ok(mut stream) => {
                     if self.active_conns.fetch_add(1, Ordering::Acquire) < self.max_conns {
 
+                        let mc_sub = mc_router.new_subscriber();
                         let thread_rooms = Arc::clone(&self.rooms);
                         let thread_active_conns = Arc::clone(&self.active_conns);
                         thread::spawn(move || {
-                            match ServerInstance::new(&mut stream, thread_rooms) {
+                            match ServerInstance::new(&mut stream, mc_sub, thread_rooms) {
                                 Ok(mut instance) => {
                                     instance.run_loop();
                                     drop(instance);
@@ -646,10 +756,17 @@ impl Server {
                         self.active_conns.fetch_sub(1, Ordering::Release);
                     }
                 },
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // Nothing to do.
+                },
                 Err(e) => {
                     return Err(ah::format_err!("Connection failed: {}", e));
                 },
             }
+
+            mc_router.run_router();
+
+            thread::sleep(Duration::from_millis(10));
         }
         Ok(())
     }

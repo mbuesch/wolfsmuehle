@@ -34,6 +34,8 @@ pub struct GameMetaView {
     player_name_entry:      gtk::Entry,
     player_mode_combo:      gtk::ComboBoxText,
     player_name_editing:    bool,
+    chat_text:              gtk::TextView,
+    chat_say_entry:         gtk::Entry,
 }
 
 impl GameMetaView {
@@ -41,7 +43,9 @@ impl GameMetaView {
                room_tree_view:      gtk::TreeView,
                player_tree_view:    gtk::TreeView,
                player_name_entry:   gtk::Entry,
-               player_mode_combo:   gtk::ComboBoxText) -> GameMetaView {
+               player_mode_combo:   gtk::ComboBoxText,
+               chat_text:           gtk::TextView,
+               chat_say_entry:      gtk::Entry) -> GameMetaView {
         // Room list
         for i in 0..2 {
             let column = gtk::TreeViewColumn::new();
@@ -81,6 +85,8 @@ impl GameMetaView {
             player_name_entry,
             player_mode_combo,
             player_name_editing: false,
+            chat_text,
+            chat_say_entry,
         }
     }
 
@@ -175,6 +181,7 @@ impl GameMetaView {
                     Print::error(&format!("Failed to join room: {}", e));
                 }
             }
+            self.clear_chat_messages();
             self.displayed_roomlist.clear();
         }
     }
@@ -235,6 +242,48 @@ impl GameMetaView {
         }
     }
 
+    pub fn clear_chat_messages(&mut self) {
+        if let Some(buffer) = self.chat_text.get_buffer() {
+            buffer.set_text("");
+        }
+    }
+
+    pub fn add_chat_messages(&mut self, messages: &Vec<String>) {
+        if let Some(buffer) = self.chat_text.get_buffer() {
+            let parent = self.chat_text.get_parent().unwrap();
+            let scroll = parent.downcast_ref::<gtk::ScrolledWindow>().unwrap();
+
+            // Add all messages to the text view
+            let start = buffer.get_start_iter();
+            let end = buffer.get_end_iter();
+            let mut text = buffer.get_text(&start, &end, true).unwrap().as_str().to_string();
+            for m in messages {
+                text.push_str(&format!("{}\n", m));
+            }
+            buffer.set_text(&text);
+
+            // Scroll to the bottom.
+            let adj = scroll.get_vadjustment().unwrap();
+            adj.set_value(adj.get_upper());
+            scroll.set_vadjustment(Some(&adj));
+        }
+    }
+
+    fn handle_chat_say(&mut self) {
+        let text = self.chat_say_entry.get_text();
+        if !text.as_str().is_empty() {
+            Print::debug(&format!("Say: {}", text));
+            let ret = self.game.borrow_mut().client_send_chat_message(text.as_str());
+            if let Err(e) = ret {
+                messagebox_error::<gtk::Window>(
+                    None,
+                    &format!("Failed send chat message:\n{}", e));
+            } else {
+                self.chat_say_entry.set_text("");
+            }
+        }
+    }
+
     fn gsignal_playername_changed(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
         self.playername_changed();
         None
@@ -263,6 +312,11 @@ impl GameMetaView {
         None
     }
 
+    fn gsignal_chat_say(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
+        self.handle_chat_say();
+        None
+    }
+
     pub fn connect_signals(_self: Rc<RefCell<GameMetaView>>,
                            handler_name: &str) -> Option<GSigHandler> {
         match handler_name {
@@ -278,6 +332,8 @@ impl GameMetaView {
                 Some(gsignal_connect_to_mut!(_self, gsignal_playermode_changed, None)),
             "handler_roomtree_rowactivated" =>
                 Some(gsignal_connect_to_mut!(_self, gsignal_roomtree_rowactivated, None)),
+            "handler_chat_say" =>
+                Some(gsignal_connect_to_mut!(_self, gsignal_chat_say, None)),
             _ => None,
         }
     }

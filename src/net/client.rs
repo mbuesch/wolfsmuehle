@@ -44,6 +44,7 @@ use crate::net::protocol::{
     MsgReqPlayerList,
     MsgReqRoomList,
     MsgReset,
+    MsgSay,
     MsgType,
     buffer_skip,
     message_from_bytes,
@@ -204,6 +205,13 @@ impl Client {
     /// Send a RequestRoomList message to the server.
     pub fn send_request_roomlist(&mut self) -> ah::Result<()> {
         self.send_msg(&mut MsgReqRoomList::new())?;
+        Ok(())
+    }
+
+    /// Send a chat message to the server.
+    pub fn send_chat_message(&mut self, text: &str) -> ah::Result<()> {
+        self.send_msg_wait_for_ok("say", 1.0,
+                                  &mut MsgSay::new("", text)?)?;
         Ok(())
     }
 

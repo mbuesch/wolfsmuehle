@@ -56,6 +56,7 @@ const MSG_ID_PLAYERLIST: u32        = 10;
 const MSG_ID_REQGAMESTATE: u32      = 11;
 const MSG_ID_GAMESTATE: u32         = 12;
 const MSG_ID_MOVE: u32              = 13;
+const MSG_ID_SAY: u32               = 14;
 
 type FieldsArray = [[u32; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 
@@ -75,6 +76,7 @@ pub enum MsgType<'a> {
     ReqGameState(&'a MsgReqGameState),
     GameState(&'a MsgGameState),
     Move(&'a MsgMove),
+    Say(&'a MsgSay),
 }
 
 pub trait Message {
@@ -163,6 +165,8 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
             MsgGameState::from_bytes(header, &data[offset..])?,
         MSG_ID_MOVE =>
             MsgMove::from_bytes(header, &data[offset..])?,
+        MSG_ID_SAY =>
+            MsgSay::from_bytes(header, &data[offset..])?,
         _ =>
             return Err(ah::format_err!("from_bytes: Unknown ID ({}).", header.get_id())),
     };
@@ -299,7 +303,7 @@ impl MsgHeader {
 
 macro_rules! define_trivial_message {
     ($struct_name:ident, $msg_type:ident, $id:ident) => {
-        #[derive(Debug)]
+        #[derive(Clone, Debug)]
         pub struct $struct_name {
             header:     MsgHeader,
         }
@@ -345,7 +349,7 @@ define_trivial_message!(MsgReqGameState, ReqGameState, MSG_ID_REQGAMESTATE);
 // MsgResult
 //////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MsgResult {
     header:             MsgHeader,
     in_reply_to_header: MsgHeader,
@@ -454,7 +458,7 @@ impl Message for MsgResult {
 // MsgJoin
 //////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MsgJoin {
     header:             MsgHeader,
     room_name_len:      u32,
@@ -551,7 +555,7 @@ impl Message for MsgJoin {
 // MsgGameState
 //////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MsgGameState {
     header:         MsgHeader,
     fields:         FieldsArray,
@@ -658,7 +662,7 @@ impl Message for MsgGameState {
 // MsgRoomList
 //////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MsgRoomList {
     header:         MsgHeader,
     total_count:    u32,
@@ -746,7 +750,7 @@ impl Message for MsgRoomList {
 // MsgPlayerList
 //////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MsgPlayerList {
     header:             MsgHeader,
     total_count:        u32,
@@ -846,7 +850,7 @@ impl Message for MsgPlayerList {
 // MsgMove
 //////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MsgMove {
     header:         MsgHeader,
     action:         u32,
@@ -926,6 +930,103 @@ impl Message for MsgMove {
         data.extend_from_slice(&self.coord_x.to_net());
         data.extend_from_slice(&self.coord_y.to_net());
         assert_eq!(data.len(), MSG_MOVE_SIZE as usize);
+        data
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// MsgSay
+//////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug)]
+pub struct MsgSay {
+    header:             MsgHeader,
+    player_name_len:    u32,
+    player_name:        [u8; MSG_MAXPLAYERNAME],
+    message_len:        u32,
+    message:            [u8; MSG_SAY_MAXMSGLEN],
+}
+
+const MSG_SAY_MAXMSGLEN: usize = 0x200;
+const MSG_SAY_SIZE: u32 = MSG_HEADER_SIZE +
+                          (1 * 4) +
+                          MSG_MAXPLAYERNAME as u32 +
+                          (1 * 4) +
+                          MSG_SAY_MAXMSGLEN as u32;
+
+impl MsgSay {
+    pub fn new(player_name: &str,
+               message:     &str) -> ah::Result<MsgSay> {
+        let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
+        let player_name_len = player_name.to_net(&mut player_name_bytes, true)?;
+        let mut message_bytes = [0; MSG_SAY_MAXMSGLEN];
+        let message_len = message.to_net(&mut message_bytes, true)?;
+        Ok(MsgSay {
+            header:         MsgHeader::new(MSG_MAGIC,
+                                           MSG_SAY_SIZE,
+                                           MSG_ID_SAY,
+                                           0),
+            player_name_len:    player_name_len as u32,
+            player_name:        player_name_bytes,
+            message_len:        message_len as u32,
+            message:            message_bytes,
+        })
+    }
+
+    pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+        if data.len() >= (MSG_SAY_SIZE - MSG_HEADER_SIZE) as usize {
+            let offset = 0;
+
+            let (player_name_len, player_name, offset) = extract_str!(
+                MSG_MAXPLAYERNAME, data, offset);
+            let (message_len, message, offset) = extract_str!(
+                MSG_SAY_MAXMSGLEN, data, offset);
+
+            let msg = MsgSay {
+                header,
+                player_name_len,
+                player_name,
+                message_len,
+                message,
+            };
+            assert_eq!(offset, (MSG_SAY_SIZE - MSG_HEADER_SIZE) as usize);
+            Ok((offset, Box::new(msg)))
+        } else {
+            Err(ah::format_err!("MsgSay: Not enough data."))
+        }
+    }
+
+    pub fn set_player_name(&mut self, player_name: &str) -> ah::Result<()> {
+        self.player_name_len = player_name.to_net(&mut self.player_name, true)? as u32;
+        Ok(())
+    }
+
+    pub fn get_player_name(&self) -> String {
+        match String::from_net(&self.player_name, self.player_name_len as usize, true) {
+            Ok(m) => m,
+            Err(_) => "Failed to parse MsgSay.".to_string(),
+        }
+    }
+
+    pub fn get_text(&self) -> String {
+        match String::from_net(&self.message, self.message_len as usize, true) {
+            Ok(m) => m,
+            Err(_) => "Failed to parse MsgSay.".to_string(),
+        }
+    }
+}
+
+impl Message for MsgSay {
+    msg_trait_define_common!(Say);
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut data = Vec::with_capacity(MSG_SAY_SIZE as usize);
+        self.header.to_bytes(&mut data);
+        data.extend_from_slice(&self.player_name_len.to_net());
+        data.extend_from_slice(&self.player_name);
+        data.extend_from_slice(&self.message_len.to_net());
+        data.extend_from_slice(&self.message);
+        assert_eq!(data.len(), MSG_SAY_SIZE as usize);
         data
     }
 }

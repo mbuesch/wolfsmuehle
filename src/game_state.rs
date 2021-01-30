@@ -49,6 +49,7 @@ use crate::net::{
         MsgMove,
         MsgPlayerList,
         MsgRoomList,
+        MsgSay,
         MsgType,
     },
 };
@@ -69,8 +70,11 @@ use crate::player::{
 };
 use crate::print::Print;
 use crate::random::random_alphanum;
+use std::collections::VecDeque;
 use std::fmt;
 use std::time;
+
+const SAY_DEQUE_MAX_LEN: usize = 0x1000;
 
 /// All possible relative move offsets that could lead to a capture.
 const CAPTURE_OFFSETS: [Coord; 12] = [
@@ -240,6 +244,7 @@ pub struct GameState {
     joined_room:        Option<String>,
     roomlist_time:      time::Instant,
     playerlist_time:    time::Instant,
+    say_deque:          VecDeque<String>,
 }
 
 impl GameState {
@@ -280,6 +285,7 @@ impl GameState {
             joined_room:        None,
             roomlist_time:      time::Instant::now(),
             playerlist_time:    time::Instant::now(),
+            say_deque:          VecDeque::new(),
         };
         game.reset_game(true);
         game.print_turn();
@@ -927,6 +933,17 @@ impl GameState {
                                                      is_self));
     }
 
+    fn client_handle_rx_msg_say(&mut self, msg: &MsgSay) {
+        let text = format!("[{}]: {}",
+                           msg.get_player_name(),
+                           msg.get_text());
+        let text = text.replace("\n", "\n\t").replace("\r", "");
+        self.say_deque.push_back(text);
+        if self.say_deque.len() > SAY_DEQUE_MAX_LEN {
+            self.say_deque.pop_front();
+        }
+    }
+
     fn client_handle_rx_messages(&mut self, messages: Vec<Box<dyn Message>>) -> bool {
         let mut redraw = false;
         for message in &messages {
@@ -960,6 +977,9 @@ impl GameState {
                     if self.joined_room.is_some() {
                         self.client_handle_rx_msg_playerlist(msg);
                     }
+                },
+                MsgType::Say(msg) => {
+                    self.client_handle_rx_msg_say(msg);
                 },
             }
         }
@@ -1161,6 +1181,22 @@ impl GameState {
         let mut game_state_msg = self.make_state_message();
         if let Some(client) = self.client.as_mut() {
             client.send_msg_wait_for_ok("GameState", 3.0, &mut game_state_msg)?;
+        }
+        Ok(())
+    }
+
+    pub fn client_get_chat_messages(&mut self) -> Vec<String> {
+        let mut ret = Vec::with_capacity(self.say_deque.len());
+        for text in &self.say_deque {
+            ret.push(text.to_string());
+        }
+        self.say_deque.clear();
+        ret
+    }
+
+    pub fn client_send_chat_message(&mut self, text: &str) -> ah::Result<()> {
+        if let Some(client) = self.client.as_mut() {
+            client.send_chat_message(text)?;
         }
         Ok(())
     }

@@ -102,12 +102,16 @@ impl MainWindow {
         let player_tree: gtk::TreeView = builder.get_object("player_tree").unwrap();
         let player_name_entry: gtk::Entry = builder.get_object("player_name_entry").unwrap();
         let player_mode_combo: gtk::ComboBoxText = builder.get_object("player_mode_combo").unwrap();
+        let chat_text: gtk::TextView = builder.get_object("chat_text_view").unwrap();
+        let chat_say_entry: gtk::Entry = builder.get_object("chat_say_entry").unwrap();
         let game_meta_view = Rc::new(RefCell::new(
             GameMetaView::new(Rc::clone(&game),
                               room_tree,
                               player_tree,
                               player_name_entry,
-                              player_mode_combo)));
+                              player_mode_combo,
+                              chat_text,
+                              chat_say_entry)));
 
         // Create drawing area.
         let draw = Rc::new(RefCell::new(DrawingArea::new(
@@ -187,18 +191,21 @@ impl MainWindow {
                 let redraw;
                 let player_list;
                 let room_list;
+                let chat_messages;
                 let is_joined_room;
                 let is_connected;
                 if let Ok(mut game) = self.game.try_borrow_mut() {
                     redraw = game.poll_server();
                     player_list = Some(game.get_room_player_list().clone());
                     room_list = Some(game.get_room_list().clone());
+                    chat_messages = Some(game.client_get_chat_messages());
                     is_joined_room = game.client_get_joined_room().is_some();
                     is_connected = Some(game.client_is_connected());
                 } else {
                     redraw = false;
                     player_list = None;
                     room_list = None;
+                    chat_messages = None;
                     is_joined_room = false;
                     is_connected = None;
                 }
@@ -212,6 +219,15 @@ impl MainWindow {
                 }
                 if let Some(room_list) = room_list {
                     game_meta_view.update_room_list(&room_list);
+                }
+                if is_joined_room {
+                    if let Some(chat_messages) = chat_messages {
+                        if !chat_messages.is_empty() {
+                            game_meta_view.add_chat_messages(&chat_messages);
+                        }
+                    }
+                } else {
+                    game_meta_view.clear_chat_messages();
                 }
                 if let Some(is_connected) = is_connected {
                     let pending_join = is_connected && !is_joined_room;
@@ -321,6 +337,7 @@ impl MainWindow {
 
         self.draw.borrow_mut().reset_game();
         self.game_meta_view.borrow_mut().clear_player_list();
+        self.game_meta_view.borrow_mut().clear_chat_messages();
         self.button_connect.set_sensitive(true);
         self.button_disconnect.set_sensitive(false);
         self.game_meta_info_grid.hide();
