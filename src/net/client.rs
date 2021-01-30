@@ -50,7 +50,6 @@ use crate::net::protocol::{
     net_sync,
 };
 use std::time::Instant;
-use libc::{EAGAIN, EWOULDBLOCK};
 
 const DEBUG_RAW: bool = false;
 
@@ -241,16 +240,11 @@ impl Client {
                     Print::debug(&format!("Client RX: {:?}", buffer));
                 }
             },
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                buffer.truncate(offset);
+            },
             Err(e) => {
-                let err_code = if let Some(err_code) = e.raw_os_error() {
-                    err_code
-                } else {
-                    -1
-                };
-                if err_code != EAGAIN &&
-                   err_code != EWOULDBLOCK {
-                    Print::error(&format!("Receive error: {}", e));
-                }
+                Print::error(&format!("Receive error: {}", e));
                 buffer.truncate(offset);
             },
         }
