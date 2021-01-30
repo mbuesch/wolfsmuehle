@@ -39,8 +39,8 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-const XOFFS: f64    = 25.0;
-const YOFFS: f64    = 25.0;
+const XOFFS: f64    = 50.0;
+const YOFFS: f64    = 50.0;
 const POSDIST: f64  = 100.0;
 
 /// Convert board coordinates to pixel coodrinates.

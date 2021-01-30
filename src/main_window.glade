@@ -195,8 +195,8 @@
         </child>
         <child>
           <object class="GtkDrawingArea" id="drawing_area">
-            <property name="width-request">450</property>
-            <property name="height-request">650</property>
+            <property name="width-request">500</property>
+            <property name="height-request">700</property>
             <property name="visible">True</property>
             <property name="can-focus">False</property>
             <signal name="button-press-event" handler="handler_drawingarea_buttonpress" swapped="no"/>
