@@ -1005,15 +1005,19 @@ impl GameState {
 
     /// Poll the game server state.
     pub fn poll_server(&mut self) -> bool {
-        if let Some(client) = self.client.as_mut() {
-            if let Some(messages) = client.poll() {
-                self.client_handle_rx_messages(messages)
-            } else {
-                false
+        let mut redraw = false;
+        loop {
+            if let Some(client) = self.client.as_mut() {
+                if let Some(messages) = client.poll() {
+                    if !messages.is_empty() {
+                        redraw |= self.client_handle_rx_messages(messages);
+                        continue;
+                    }
+                }
             }
-        } else {
-            false
+            break;
         }
+        redraw
     }
 
     /// Connect to a game server.
