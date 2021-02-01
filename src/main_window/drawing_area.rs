@@ -160,12 +160,32 @@ impl DrawingArea {
     }
 
     fn draw_background(&self, cairo: &cairo::Context) {
-        cairo.set_source_rgb(0.5, 0.5, 0.5);
+        // Draw background.
+        cairo.set_source_rgb(0.3, 0.44, 0.22);
         cairo.set_line_width(0.0);
         cairo.rectangle(0.0,
                         0.0,
                         self.widget.get_allocated_width() as f64,
                         self.widget.get_allocated_height() as f64);
+        cairo.fill();
+
+        // Draw sky.
+        cairo.set_source_rgb(0.0, 0.49, 0.69);
+        let pos = pos2pix(&coord!(0, 2));
+        cairo.rectangle(0.0,
+                        0.0,
+                        self.widget.get_allocated_width() as f64,
+                        pos.1);
+        cairo.fill();
+
+        // Draw barn.
+        cairo.set_source_rgb(0.35, 0.22, 0.15);
+        let pos = pos2pix(&coord!(2, 0)); cairo.move_to(pos.0, pos.1);
+        let pos = pos2pix(&coord!(3, 1)); cairo.line_to(pos.0, pos.1);
+        let pos = pos2pix(&coord!(3, 2)); cairo.line_to(pos.0, pos.1);
+        let pos = pos2pix(&coord!(1, 2)); cairo.line_to(pos.0, pos.1);
+        let pos = pos2pix(&coord!(1, 1)); cairo.line_to(pos.0, pos.1);
+        let pos = pos2pix(&coord!(2, 0)); cairo.line_to(pos.0, pos.1);
         cairo.fill();
     }
 
