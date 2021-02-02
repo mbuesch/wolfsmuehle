@@ -984,6 +984,25 @@ impl GameState {
             }
         }
 
+        redraw
+    }
+
+    /// Poll the game server state.
+    pub fn poll_server(&mut self) -> bool {
+        let mut redraw = false;
+//        let begin = time::Instant::now();
+        loop {
+            if let Some(client) = self.client.as_mut() {
+                if let Some(messages) = client.poll() {
+                    redraw |= self.client_handle_rx_messages(messages);
+                    continue;
+                }
+            }
+            break;
+        }
+//        Print::debug(&format!("poll_server took {} ms",
+//                     time::Instant::now().duration_since(begin).as_millis()));
+
         if let Some(client) = self.client.as_mut() {
             let now = time::Instant::now();
 
@@ -1000,23 +1019,6 @@ impl GameState {
             }
         }
 
-        redraw
-    }
-
-    /// Poll the game server state.
-    pub fn poll_server(&mut self) -> bool {
-        let mut redraw = false;
-        loop {
-            if let Some(client) = self.client.as_mut() {
-                if let Some(messages) = client.poll() {
-                    if !messages.is_empty() {
-                        redraw |= self.client_handle_rx_messages(messages);
-                        continue;
-                    }
-                }
-            }
-            break;
-        }
         redraw
     }
 

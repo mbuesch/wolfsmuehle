@@ -57,7 +57,7 @@ const DEBUG_RAW: bool = false;
 pub struct Client {
     stream:         TcpStream,
     sequence:       u32,
-    tail_buffer:    Option<Vec<u8>>,
+    rx_queue:       Option<Vec<u8>>,
     sync:           bool,
 }
 
@@ -69,7 +69,7 @@ impl Client {
         Ok(Client {
             stream,
             sequence:       0,
-            tail_buffer:    None,
+            rx_queue:       None,
             sync:           false,
         })
     }
@@ -96,24 +96,43 @@ impl Client {
                          name: &str,
                          timeout: f32,
                          check_match: F) -> ah::Result<()>
-        where F: Fn(Box<dyn Message>) -> Option<ah::Result<()>>
+        where F: Fn(&Box<dyn Message>) -> Option<ah::Result<()>>
     {
         let begin = Instant::now();
         let timeout_ms = (timeout * 1000.0).ceil() as u128;
-        while Instant::now().duration_since(begin).as_millis() < timeout_ms {
-            match self.poll() {
-                Some(messages) => {
-                    for m in messages {
-                        match check_match(m) {
-                            Some(r) => return r,
-                            None => (),
-                        }
+
+        let mut backlog = vec![];
+        let mut ret = Err(ah::format_err!("Timeout waiting for {} reply.", name));
+        let mut exit = false;
+
+        while Instant::now().duration_since(begin).as_millis() < timeout_ms &&
+              !exit {
+            if let Some(messages) = self.poll() {
+                for msg in messages {
+                    match check_match(&msg) {
+                        Some(r) => {
+                            // We got it!
+                            ret = r;
+                            exit = true;
+                            break;
+                        },
+                        None => {
+                            backlog.append(&mut msg.to_bytes());
+                        },
                     }
-                },
-                None => (),
+                }
             }
         }
-        Err(ah::format_err!("Timeout waiting for {} reply.", name))
+        Print::debug(&format!("net/client: Wait blocked {} ms.",
+                              Instant::now().duration_since(begin).as_millis()));
+
+        if !backlog.is_empty() {
+            if let Some(mut q) = self.rx_queue.take() {
+                backlog.append(&mut q);
+            }
+            self.rx_queue = Some(backlog);
+        }
+        ret
     }
 
     pub fn send_msg_wait_for_ok(&mut self,
@@ -230,52 +249,58 @@ impl Client {
 
     /// Poll the received messages.
     pub fn poll(&mut self) -> Option<Vec<Box<dyn Message>>> {
-        let mut buffer = vec![0u8; MSG_BUFFER_SIZE];
-        let offset = match self.tail_buffer.as_ref() {
-            None => 0,
-            Some(tail_buffer) => {
-                let tlen = tail_buffer.len();
-                buffer[0..tlen].copy_from_slice(&tail_buffer[0..tlen]);
-                self.tail_buffer = None;
-                tlen
-            },
+        let mut rx_queue = match self.rx_queue.take() {
+            Some(q) => q,
+            None => Vec::with_capacity(MSG_BUFFER_SIZE),
         };
 
-        match self.stream.read(&mut buffer[offset..]) {
-            Ok(len) => {
-                buffer.truncate(offset + len);
-                if DEBUG_RAW {
-                    Print::debug(&format!("Client RX: {:?}", buffer));
-                }
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                buffer.truncate(offset);
-            },
-            Err(e) => {
-                Print::error(&format!("Receive error: {}", e));
-                buffer.truncate(offset);
-            },
-        }
+        {
+            let data_len = rx_queue.len();
+            rx_queue.resize(data_len + MSG_BUFFER_SIZE, 0);
 
-        if !self.sync {
-            match net_sync(&buffer[..]) {
-                Some(skip) => {
-                    buffer = buffer_skip(buffer, skip);
-                    self.sync = true;
+            // Read data from the network.
+            match self.stream.read(&mut rx_queue[data_len..]) {
+                Ok(len) => {
+                    rx_queue.truncate(data_len + len);
+                    if DEBUG_RAW {
+                        Print::debug(&format!("Client RX: {:?}", &rx_queue[data_len..]));
+                    }
                 },
-                None => {
-                    self.sync = false;
-                    return None;
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    rx_queue.truncate(data_len);
                 },
+                Err(e) => {
+                    rx_queue.truncate(data_len);
+                    Print::error(&format!("Receive error: {}", e));
+                },
+            }
+
+            // Try to sync to the data stream, if necessary.
+            if !self.sync {
+                if !rx_queue.is_empty() {
+                    Print::debug("net/client: Trying to synchronize to data stream...");
+                }
+                match net_sync(&rx_queue) {
+                    Some(skip) => {
+                        rx_queue = buffer_skip(rx_queue, skip);
+                        self.sync = true;
+                        Print::debug("net/client: Synchronized to data stream.");
+                    },
+                    None => {
+                        self.sync = false;
+                        rx_queue.clear();
+                    },
+                }
             }
         }
 
+        // Parse all received messages.
         let mut messages: Vec<Box<dyn Message>> = vec![];
         loop {
-            match message_from_bytes(&buffer) {
+            match message_from_bytes(&rx_queue) {
                 Ok((len, Some(message))) => {
                     messages.push(message);
-                    buffer = buffer_skip(buffer, len);
+                    rx_queue = buffer_skip(rx_queue, len);
                 },
                 Ok((_len, None)) => {
                     // Not enough data for this message, yet.
@@ -284,17 +309,16 @@ impl Client {
                 Err(e) => {
                     Print::error(&format!("Received invalid message: {}", e));
                     self.sync = false;
-                    buffer.clear();
+                    rx_queue.clear();
                     break;
                 },
             }
         }
 
-        if !buffer.is_empty() {
-            self.tail_buffer = Some(buffer);
-        }
+        // Put all left over bytes to the queue.
+        self.rx_queue = Some(rx_queue);
 
-        Some(messages)
+        if messages.is_empty() { None } else { Some(messages) }
     }
 
     /// Disconnect from the server.
