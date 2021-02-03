@@ -30,6 +30,17 @@ use std::sync::{
         Receiver,
     },
 };
+use std::thread::sleep;
+use std::time::{
+    Duration,
+    Instant,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MulticastSync {
+    NoSync,
+    ToRouter,
+}
 
 /// The packet sent over the multicast channels.
 #[derive(Clone, Debug)]
@@ -37,13 +48,15 @@ pub struct MulticastPacket {
     pub data:           Vec<u8>,
     pub meta_data:      Vec<u8>,
     pub include_self:   bool,
+    pub sync:           MulticastSync,
 }
 
 #[derive(Debug)]
 struct MulticastRouterSub {
-    pub from_sub:   Receiver<MulticastPacket>,
-    pub to_sub:     Sender<MulticastPacket>,
-    pub killed:     Arc<AtomicBool>,
+    from_sub:           Receiver<MulticastPacket>,
+    to_sub:             Sender<MulticastPacket>,
+    killed:             Arc<AtomicBool>,
+    router_received:    Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
@@ -65,15 +78,19 @@ impl MulticastRouter {
         let (to_router, from_sub) = channel();
         let killed = Arc::new(AtomicBool::new(false));
         let killed2 = Arc::clone(&killed);
+        let router_received = Arc::new(AtomicBool::new(false));
+        let router_received2 = Arc::clone(&router_received);
         let mc_router_sub = MulticastRouterSub {
             from_sub,
             to_sub,
             killed,
+            router_received,
         };
         self.subs.push(mc_router_sub);
         MulticastSubscriber::new(from_router,
                                  to_router,
-                                 killed2)
+                                 killed2,
+                                 router_received2)
     }
 
     /// Run the router main loop.
@@ -83,9 +100,16 @@ impl MulticastRouter {
 
         // Route all broadcasts.
         for from_sub in &self.subs {
+            // Does the sender have broadcast packets?
             if let Ok(pack) = from_sub.from_sub.try_recv() {
+                from_sub.router_received.store(true, Ordering::SeqCst);
+                // For each receiver.
                 for to_sub in &self.subs {
-                    if !std::ptr::eq(from_sub, to_sub) || pack.include_self {
+                    // Send it.
+                    // Include ourselves only, if requested.
+                    if !std::ptr::eq(from_sub, to_sub) ||
+                       pack.include_self {
+
                         if let Err(e) = to_sub.to_sub.send(pack.clone()) {
                             // This may happen, if the channel has just been closed,
                             // but the killed-check hasn't caught it, yet.
@@ -100,26 +124,47 @@ impl MulticastRouter {
 
 #[derive(Debug)]
 pub struct MulticastSubscriber {
-    from_router:    Receiver<MulticastPacket>,
-    to_router:      Sender<MulticastPacket>,
-    killed:         Arc<AtomicBool>,
+    from_router:        Receiver<MulticastPacket>,
+    to_router:          Sender<MulticastPacket>,
+    killed:             Arc<AtomicBool>,
+    router_received:    Arc<AtomicBool>,
 }
 
 impl MulticastSubscriber {
     fn new(from_router:     Receiver<MulticastPacket>,
            to_router:       Sender<MulticastPacket>,
-           killed:          Arc<AtomicBool>) -> MulticastSubscriber {
+           killed:          Arc<AtomicBool>,
+           router_received: Arc<AtomicBool>) -> MulticastSubscriber {
         MulticastSubscriber {
             from_router,
             to_router,
             killed,
+            router_received,
         }
     }
 
     /// Send data to all subscribers on our router.
     pub fn send_broadcast(&self, pack: MulticastPacket) {
+        let sync = pack.sync;
+
+        // Send the packet to the router.
+        self.router_received.store(false, Ordering::SeqCst);
         if let Err(e) = self.to_router.send(pack) {
             Print::error(&format!("Failed to send broadcast: {}", e));
+        } else {
+            // Wait for the router to receive this packet, if requested.
+            match sync {
+                MulticastSync::NoSync => (),
+                MulticastSync::ToRouter => {
+                    let begin = Instant::now();
+                    while !self.router_received.load(Ordering::SeqCst) {
+                        if Instant::now().duration_since(begin).as_millis() > 1000 {
+                            Print::error("Send broacast: Sync-to-router timeout.");
+                        }
+                        sleep(Duration::from_millis(10));
+                    }
+                },
+            }
         }
     }
 

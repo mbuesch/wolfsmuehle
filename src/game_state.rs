@@ -72,7 +72,6 @@ use crate::print::Print;
 use crate::random::random_alphanum;
 use std::collections::VecDeque;
 use std::fmt;
-use std::time;
 
 const SAY_DEQUE_MAX_LEN: usize = 0x1000;
 
@@ -242,8 +241,6 @@ pub struct GameState {
     client:             Option<Client>,
     client_addr:        Option<String>,
     joined_room:        Option<String>,
-    roomlist_time:      time::Instant,
-    playerlist_time:    time::Instant,
     say_deque:          VecDeque<String>,
 }
 
@@ -283,8 +280,6 @@ impl GameState {
             client:             None,
             client_addr:        None,
             joined_room:        None,
-            roomlist_time:      time::Instant::now(),
-            playerlist_time:    time::Instant::now(),
             say_deque:          VecDeque::new(),
         };
         game.reset_game(true);
@@ -990,7 +985,6 @@ impl GameState {
     /// Poll the game server state.
     pub fn poll_server(&mut self) -> bool {
         let mut redraw = false;
-//        let begin = time::Instant::now();
         loop {
             if let Some(client) = self.client.as_mut() {
                 if let Some(messages) = client.poll() {
@@ -1000,25 +994,6 @@ impl GameState {
             }
             break;
         }
-//        Print::debug(&format!("poll_server took {} ms",
-//                     time::Instant::now().duration_since(begin).as_millis()));
-
-        if let Some(client) = self.client.as_mut() {
-            let now = time::Instant::now();
-
-            if self.joined_room.is_some() {
-                if now.duration_since(self.playerlist_time).as_millis() >= 200 {
-                    client.send_request_playerlist().ok();
-                    self.playerlist_time = now;
-                }
-                client.send_request_gamestate().ok();
-            }
-            if now.duration_since(self.roomlist_time).as_millis() >= 1000 {
-                client.send_request_roomlist().ok();
-                self.roomlist_time = now;
-            }
-        }
-
         redraw
     }
 
@@ -1031,8 +1006,6 @@ impl GameState {
         client.send_nop()?;
         self.client = Some(client);
         self.client_addr = Some(addr.to_string());
-        self.roomlist_time = time::Instant::now() - time::Duration::new(1000, 0);
-        self.playerlist_time = self.roomlist_time;
         Ok(())
     }
 

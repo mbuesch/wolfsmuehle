@@ -70,6 +70,7 @@ use crate::net::{
             MulticastPacket,
             MulticastRouter,
             MulticastSubscriber,
+            MulticastSync,
         },
     },
 };
@@ -121,7 +122,7 @@ impl<'a> ServerInstance<'a> {
         stream.set_read_timeout(Some(Duration::from_millis(10)))?;
         stream.set_write_timeout(Some(Duration::from_millis(5000)))?;
 
-        Ok(ServerInstance {
+        let mut self_ = ServerInstance {
             stream,
             mc_sub,
             sequence:       0,
@@ -130,7 +131,13 @@ impl<'a> ServerInstance<'a> {
             joined_room:    None,
             player_name:    None,
             player_mode:    PlayerMode::Spectator,
-        })
+        };
+
+        for reply in &mut self_.gen_room_list_msgs()? {
+            self_.send_msg(reply)?;
+        }
+
+        Ok(self_)
     }
 
     fn send(&mut self, data: &[u8]) -> ah::Result<()> {
@@ -141,11 +148,79 @@ impl<'a> ServerInstance<'a> {
         Ok(())
     }
 
-    fn send_msg(&mut self, msg: &mut dyn Message) -> ah::Result<()> {
+    fn send_msg(&mut self, msg: &mut impl Message) -> ah::Result<()> {
         msg.get_header_mut().set_sequence(self.sequence);
         self.send(&msg.to_bytes())?;
         self.sequence = self.sequence.wrapping_add(1);
         Ok(())
+    }
+
+    fn send_broadcast(&self,
+                      msg:          &impl Message,
+                      room:         Option<&ServerRoom>,
+                      include_self: bool,
+                      sync:         MulticastSync) {
+        self.mc_sub.send_broadcast(MulticastPacket {
+            data:           msg.to_bytes(),
+            meta_data:      if let Some(room) = room {
+                                room.get_name().as_bytes().to_vec()
+                            } else {
+                                vec![]
+                            },
+            include_self,
+            sync,
+        });
+    }
+
+    fn broadcast_game_state(&self, room: &mut ServerRoom) {
+        let game_state = room.get_game_state(self.player_mode).make_state_message();
+        self.send_broadcast(&game_state, Some(room), true,
+                            MulticastSync::NoSync);
+    }
+
+    fn broadcast_player_list(&self,
+                             room: &mut ServerRoom,
+                             include_self: bool) -> ah::Result<()> {
+        let messages = self.gen_player_list_msgs(room)?;
+        for msg in messages {
+            self.send_broadcast(&msg, Some(room), include_self,
+                                if include_self {
+                                    MulticastSync::NoSync
+                                } else {
+                                    MulticastSync::ToRouter
+                                });
+        }
+        Ok(())
+    }
+
+    fn gen_player_list_msgs(&self, room: &ServerRoom) -> ah::Result<Vec<MsgPlayerList>> {
+        let mut messages = vec![];
+        let player_list = room.get_player_list_ref();
+        for (index, player) in player_list.iter().sorted().enumerate() {
+            let msg = MsgPlayerList::new(player_list.count() as u32,
+                                         index as u32,
+                                         &player.name,
+                                         player_mode_to_num(player.mode))?;
+            messages.push(msg);
+        }
+        Ok(messages)
+    }
+
+    fn gen_room_list_msgs(&self) -> ah::Result<Vec<MsgRoomList>> {
+        let mut room_names = vec![];
+        {
+            let rooms = self.rooms.lock().unwrap();
+            for (_room_name, room) in rooms.iter().sorted() {
+                room_names.push(room.get_name().to_string());
+            }
+        }
+        let mut messages = vec![];
+        for (i, room_name) in room_names.iter().enumerate() {
+            messages.push(MsgRoomList::new(room_names.len() as u32,
+                                           i as u32,
+                                           &room_name)?);
+        }
+        Ok(messages)
     }
 
     fn handle_rx_room_message(&mut self,
@@ -157,7 +232,7 @@ impl<'a> ServerInstance<'a> {
         } else {
             return Err(ah::format_err!("Not in a room."));
         };
-        let room = if let Some(room) = room {
+        let mut room = if let Some(room) = room {
             room
         } else {
             return Err(ah::format_err!("Room '{}' not found.",
@@ -167,6 +242,7 @@ impl<'a> ServerInstance<'a> {
         match msg_type {
             MsgType::Reset(msg) => {
                 room.get_game_state(self.player_mode).reset_game(false);
+                self.broadcast_game_state(&mut room);
                 drop(rooms);
                 self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
             },
@@ -180,6 +256,7 @@ impl<'a> ServerInstance<'a> {
                     Ok(_) => None,
                     Err(e) => Some(format!("{}", e)),
                 };
+                self.broadcast_game_state(&mut room);
                 drop(rooms);
                 if let Some(e) = err {
                     self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK, &e)?)?;
@@ -188,15 +265,7 @@ impl<'a> ServerInstance<'a> {
                 }
             },
             MsgType::ReqPlayerList(_msg) => {
-                let mut replies = vec![];
-                let player_list = room.get_player_list_ref();
-                for (index, player) in player_list.iter().sorted().enumerate() {
-                    replies.push(MsgPlayerList::new(
-                        player_list.count() as u32,
-                        index as u32,
-                        &player.name,
-                        player_mode_to_num(player.mode))?);
-                }
+                let mut replies = self.gen_player_list_msgs(room)?;
                 drop(rooms);
                 for reply in &mut replies {
                     self.send_msg(reply)?;
@@ -210,6 +279,7 @@ impl<'a> ServerInstance<'a> {
             MsgType::Move(msg) => {
                 match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
                     Ok(_) => {
+                        self.broadcast_game_state(&mut room);
                         drop(rooms);
                         self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
                     },
@@ -222,7 +292,6 @@ impl<'a> ServerInstance<'a> {
                 }
             },
             MsgType::Say(msg) => {
-                drop(rooms);
                 let mut msg = msg.clone();
 
                 // Override the player name. It might be forged.
@@ -232,19 +301,10 @@ impl<'a> ServerInstance<'a> {
                     msg.set_player_name("")?;
                 }
 
-                // Set the room name as meta data.
-                let meta_data = if let Some(room_name) = self.joined_room.as_ref() {
-                    room_name.as_bytes().to_vec()
-                } else {
-                    vec![]
-                };
-
                 // Forward the message to all other connected clients.
-                self.mc_sub.send_broadcast(MulticastPacket {
-                    data: msg.to_bytes(),
-                    meta_data,
-                    include_self: true
-                });
+                self.send_broadcast(&msg, Some(room), true, MulticastSync::NoSync);
+
+                drop(rooms);
                 self.send_msg(&mut MsgResult::new(&msg, MSG_RESULT_OK, "")?)?;
             },
             _ => {
@@ -294,7 +354,7 @@ impl<'a> ServerInstance<'a> {
 
         // Join the new room.
         match rooms.get_mut(room_name) {
-            Some(room) => {
+            Some(mut room) => {
                 // Add player to room.
                 match room.add_player(player_name, player_mode) {
                     Ok(_) => {
@@ -306,6 +366,9 @@ impl<'a> ServerInstance<'a> {
                                              player_name,
                                              self.player_mode,
                                              room.get_name()));
+                        if let Err(e) = self.broadcast_player_list(&mut room, true) {
+                            Print::error(&format!("Failed to broadcast player list: {}", e));
+                        }
                     },
                     Err(e) => {
                         // Adding player to room failed.
@@ -324,8 +387,22 @@ impl<'a> ServerInstance<'a> {
     }
 
     fn do_leave(&mut self) {
+        let joined_room = if let Some(joined_room) = self.joined_room.as_ref() {
+            Some(joined_room.to_string())
+        } else {
+            None
+        };
+
         let mut rooms = self.rooms.lock().unwrap();
         do_leave!(self, rooms);
+
+        if let Some(joined_room) = joined_room {
+            if let Some(mut room) = rooms.get_mut(&joined_room) {
+                if let Err(e) = self.broadcast_player_list(&mut room, false) {
+                    Print::error(&format!("Failed to broadcast player list: {}", e));
+                }
+            }
+        }
     }
 
     /// Handle received message.
@@ -372,17 +449,8 @@ impl<'a> ServerInstance<'a> {
                 self.send_msg(&mut MsgResult::new(msg, MSG_RESULT_OK, "")?)?;
             },
             MsgType::ReqRoomList(_msg) => {
-                let mut room_names = vec![];
-                {
-                    let rooms = self.rooms.lock().unwrap();
-                    for (_room_name, room) in rooms.iter().sorted() {
-                        room_names.push(room.get_name().to_string());
-                    }
-                }
-                for (i, room_name) in room_names.iter().enumerate() {
-                    self.send_msg(&mut MsgRoomList::new(room_names.len() as u32,
-                                                        i as u32,
-                                                        &room_name)?)?;
+                for reply in &mut self.gen_room_list_msgs()? {
+                    self.send_msg(reply)?;
                 }
             },
             MsgType::RoomList(msg) => {
@@ -430,14 +498,27 @@ impl<'a> ServerInstance<'a> {
     }
 
     fn handle_rx_multicast_message(&mut self, msg_type: MsgType) -> ah::Result<()> {
-        match msg_type {
-            MsgType::Say(msg) => {
+
+        macro_rules! forward {
+            ($msg:expr) => {
+                self.send_msg(&mut $msg.clone())
+            }
+        }
+
+        macro_rules! forward_if_joined_room {
+            ($msg:expr) => {{
                 if self.joined_room.is_some() {
-                    // Got a chat message from another client. Forward it to our client.
-                    self.send_msg(&mut msg.clone())?;
+                    forward!($msg)?;
                 }
                 Ok(())
-            }
+            }}
+        }
+
+        match msg_type {
+            MsgType::Say(msg) => forward_if_joined_room!(msg),
+            MsgType::GameState(msg) => forward_if_joined_room!(msg),
+            MsgType::PlayerList(msg) => forward!(msg),
+            MsgType::RoomList(msg) => forward!(msg),
             other =>
                 Err(ah::format_err!("Received unexpected multicast: {:?}", other)),
         }
