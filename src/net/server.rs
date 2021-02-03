@@ -97,7 +97,12 @@ macro_rules! do_leave {
         if let Some(player_name) = $self.player_name.take() {
             if let Some(room_name) = $self.joined_room.take() {
                 match $rooms.get_mut(&room_name) {
-                    Some(room) => room.remove_player(&player_name),
+                    Some(mut room) => {
+                        room.remove_player(&player_name);
+                        if let Err(e) = $self.broadcast_player_list(&mut room, false) {
+                            Print::error(&format!("Failed to broadcast player list: {}", e));
+                        }
+                    },
                     None => (),
                 }
                 Print::info(&format!("{} / '{}' / '{}' has left the room '{}'",
@@ -387,22 +392,8 @@ impl<'a> ServerInstance<'a> {
     }
 
     fn do_leave(&mut self) {
-        let joined_room = if let Some(joined_room) = self.joined_room.as_ref() {
-            Some(joined_room.to_string())
-        } else {
-            None
-        };
-
         let mut rooms = self.rooms.lock().unwrap();
         do_leave!(self, rooms);
-
-        if let Some(joined_room) = joined_room {
-            if let Some(mut room) = rooms.get_mut(&joined_room) {
-                if let Err(e) = self.broadcast_player_list(&mut room, false) {
-                    Print::error(&format!("Failed to broadcast player list: {}", e));
-                }
-            }
-        }
     }
 
     /// Handle received message.
