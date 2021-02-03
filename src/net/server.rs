@@ -18,10 +18,10 @@
 //
 
 mod multicast;
+mod room;
 
 use anyhow as ah;
 use std::collections::HashMap;
-use std::cmp::{Ord, PartialOrd, Eq, PartialEq};
 use std::io::{
     Read,
     Write,
@@ -37,10 +37,7 @@ use std::sync::{Mutex, Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
-use crate::game_state::GameState;
 use crate::player::{
-    Player,
-    PlayerList,
     PlayerMode,
     num_to_player_mode,
     player_mode_to_num,
@@ -48,7 +45,6 @@ use crate::player::{
 use crate::print::Print;
 use crate::net::{
     consts::{
-        MAX_PLAYERS,
         MAX_ROOMS,
     },
     protocol::{
@@ -71,6 +67,9 @@ use crate::net::{
             MulticastRouter,
             MulticastSubscriber,
             MulticastSync,
+        },
+        room::{
+            ServerRoom,
         },
     },
 };
@@ -632,123 +631,6 @@ impl<'a> ServerInstance<'a> {
         }
         self.do_leave();
     }
-}
-
-struct ServerRoom {
-    name:                   String,
-    game_state:             GameState,
-    player_list:            PlayerList,
-    restrict_player_modes:  bool,
-}
-
-impl ServerRoom {
-    fn new(name: String,
-           restrict_player_modes: bool) -> ah::Result<ServerRoom> {
-        let mut game_state = GameState::new(PlayerMode::Both,
-                                            None)?; /* no player name */
-        let player_list = PlayerList::new(vec![]);
-        game_state.set_room_player_list(player_list.clone());
-        Ok(ServerRoom {
-            name,
-            game_state,
-            player_list,
-            restrict_player_modes,
-        })
-    }
-
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-
-    fn get_game_state(&mut self, player_mode: PlayerMode) -> &mut GameState {
-        self.game_state.set_player_mode(player_mode)
-            .expect("game_state.set_player_mode failed.");
-        &mut self.game_state
-    }
-
-    fn can_add_player(&self,
-                      player_name: &str,
-                      player_mode: PlayerMode,
-                      ignore_name: Option<&str>) -> ah::Result<()> {
-        let mut player_list = self.player_list.clone();
-        if let Some(ignore_name) = ignore_name {
-            player_list.remove_player_by_name(ignore_name);
-        }
-
-        if self.restrict_player_modes {
-            match player_mode {
-                PlayerMode::Spectator => (),
-                PlayerMode::Both => {
-                    return Err(ah::format_err!("PlayerMode::Both not supported in restricted mode."));
-                },
-                PlayerMode::Wolf => {
-                    if !player_list.find_players_by_mode(PlayerMode::Wolf).is_empty() {
-                        return Err(ah::format_err!("The game already has a Wolf player."));
-                    }
-                },
-                PlayerMode::Sheep => {
-                    if !player_list.find_players_by_mode(PlayerMode::Sheep).is_empty() {
-                        return Err(ah::format_err!("The game already has a Sheep player."));
-                    }
-                },
-            }
-        }
-
-        if player_list.count() < MAX_PLAYERS {
-            if player_list.find_player_by_name(player_name).is_some() {
-                Err(ah::format_err!("Player name '{}' is already occupied.",
-                                    player_name))
-            } else {
-                Ok(())
-            }
-        } else {
-            Err(ah::format_err!("Player '{}' can't join. Too many players in room.",
-                                player_name))
-        }
-    }
-
-    fn add_player(&mut self,
-                  player_name: &str,
-                  player_mode: PlayerMode) -> ah::Result<()> {
-
-        self.can_add_player(player_name, player_mode, None)?;
-
-        self.player_list.add_player(Player::new(player_name.to_string(),
-                                                player_mode,
-                                                false));
-        self.game_state.set_room_player_list(self.player_list.clone());
-        Ok(())
-    }
-
-    fn remove_player(&mut self, player_name: &str) {
-        self.player_list.remove_player_by_name(player_name);
-        self.game_state.set_room_player_list(self.player_list.clone());
-    }
-
-    fn get_player_list_ref(&self) -> &PlayerList {
-        &self.player_list
-    }
-}
-
-impl PartialEq for ServerRoom {
-    fn eq(&self, other: &Self) -> bool {
-        self.name.eq(&other.name)
-    }
-}
-
-impl PartialOrd for ServerRoom {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.name.partial_cmp(&other.name)
-    }
-}
-
-impl Ord for ServerRoom {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.name.cmp(&other.name)
-    }
-}
-
-impl Eq for ServerRoom {
 }
 
 pub struct Server {
