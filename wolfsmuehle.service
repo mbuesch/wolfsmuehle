@@ -12,7 +12,7 @@ Group=gameserver
 WorkingDirectory=/home/gameserver/wolfsmuehle
 #Nice=5
 
-ExecStart=/home/gameserver/wolfsmuehle/wolfsmuehle
+ExecStart=/home/gameserver/wolfsmuehle/wolfsmuehle -r default -r room2 -r room3 -r room4 -r room5 -r room6 -r room7 -r room8
 
 #Environment=RUST_BACKTRACE=1
 
