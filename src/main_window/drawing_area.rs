@@ -35,13 +35,15 @@ use crate::game_state::{
 };
 use crate::{gsignal_connect_to, gsignal_connect_to_mut, gsigparam};
 use crate::gtk_helpers::*;
+use crate::print::Print;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-const XOFFS: f64    = 50.0;
-const YOFFS: f64    = 50.0;
-const POSDIST: f64  = 100.0;
+const DRAW_DEBUG: bool  = false;
+const XOFFS: f64        = 50.0;
+const YOFFS: f64        = 50.0;
+const POSDIST: f64      = 100.0;
 
 /// Convert board coordinates to pixel coodrinates.
 fn pos2pix(coord: &Coord) -> (f64, f64) {
@@ -76,7 +78,7 @@ fn pix2pos(x: f64, y: f64) -> Option<Coord> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 enum MovingToken {
     NoToken,
     Wolf(f64, f64),
@@ -291,6 +293,9 @@ impl DrawingArea {
     }
 
     fn draw(&self, cairo: cairo::Context) {
+        if DRAW_DEBUG {
+            Print::debug("Redrawing board.");
+        }
         self.draw_background(&cairo);
         self.draw_board_lines(&cairo);
         self.draw_tokens(&cairo);
@@ -306,9 +311,10 @@ impl DrawingArea {
     }
 
     fn mousemove(&mut self, x: f64, y: f64) {
+        let was_moving = self.moving_token != MovingToken::NoToken;
         let move_state = self.game.borrow().get_move_state();
         self.update_moving_token(move_state, x, y);
-        if move_state != MoveState::NoMove {
+        if was_moving || self.moving_token != MovingToken::NoToken {
             self.redraw();
         }
     }
