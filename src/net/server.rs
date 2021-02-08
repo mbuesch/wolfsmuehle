@@ -54,6 +54,7 @@ use crate::net::{
         Message,
         MsgPlayerList,
         MsgPong,
+        MsgRecord,
         MsgResult,
         MsgRoomList,
         MsgType,
@@ -280,6 +281,20 @@ impl<'a> ServerInstance<'a> {
                 self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK,
                                                   "MsgPlayerList not supported.")?)?;
             },
+            MsgType::ReqRecord(msg) => {
+                let record = room.get_game_state(self.player_mode).get_recorder().get_moves_as_text();
+                drop(rooms);
+                let mut replies = MsgRecord::new(&record);
+                for reply in &mut replies {
+                    self.send_msg(reply)?;
+                }
+                self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
+            },
+            MsgType::Record(msg) => {
+                drop(rooms);
+                self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK,
+                                                  "MsgRecord not supported.")?)?;
+            },
             MsgType::Move(msg) => {
                 match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
                     Ok(_) => {
@@ -452,6 +467,8 @@ impl<'a> ServerInstance<'a> {
             MsgType::GameState(_) |
             MsgType::ReqPlayerList(_) |
             MsgType::PlayerList(_) |
+            MsgType::ReqRecord(_) |
+            MsgType::Record(_) |
             MsgType::Move(_) |
             MsgType::Say(_) => {
                 self.handle_rx_room_message(&mut msg_type)?;

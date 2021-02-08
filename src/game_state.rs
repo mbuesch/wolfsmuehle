@@ -287,7 +287,10 @@ impl GameState {
         Ok(game)
     }
 
-    pub fn get_recorder(&self) -> &Recorder {
+    pub fn get_recorder(&mut self) -> &Recorder {
+        if let Err(e) = self.client_update_recorder() {
+            Print::error(&format!("Failed to fetch recorder state from server: {}", e));
+        }
         &self.recorder
     }
 
@@ -955,6 +958,8 @@ impl GameState {
                 MsgType::ReqGameState(_) |
                 MsgType::ReqRoomList(_) |
                 MsgType::ReqPlayerList(_) |
+                MsgType::ReqRecord(_) |
+                MsgType::Record(_) |
                 MsgType::Move(_) => {
                     // Ignore.
                 },
@@ -1176,6 +1181,14 @@ impl GameState {
     pub fn client_send_chat_message(&mut self, text: &str) -> ah::Result<()> {
         if let Some(client) = self.client.as_mut() {
             client.send_chat_message(text)?;
+        }
+        Ok(())
+    }
+
+    fn client_update_recorder(&mut self) -> ah::Result<()> {
+        if let Some(client) = self.client.as_mut() {
+            let record = client.fetch_record()?;
+            self.recorder.parse_text(&record)?;
         }
         Ok(())
     }

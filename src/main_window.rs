@@ -276,7 +276,7 @@ impl MainWindow {
     }
 
     fn record_show(&self) {
-        let log = self.game.borrow().get_recorder().get_recorded_moves().join("\n");
+        let log = self.game.borrow_mut().get_recorder().get_moves_as_text();
         messagebox_info(Some(&self.appwindow), &log);
     }
 

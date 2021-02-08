@@ -57,6 +57,8 @@ const MSG_ID_REQGAMESTATE: u32      = 11;
 const MSG_ID_GAMESTATE: u32         = 12;
 const MSG_ID_MOVE: u32              = 13;
 const MSG_ID_SAY: u32               = 14;
+const MSG_ID_REQRECORD: u32         = 15;
+const MSG_ID_RECORD: u32            = 16;
 
 type FieldsArray = [[u32; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 
@@ -77,6 +79,8 @@ pub enum MsgType<'a> {
     GameState(&'a MsgGameState),
     Move(&'a MsgMove),
     Say(&'a MsgSay),
+    ReqRecord(&'a MsgReqRecord),
+    Record(&'a MsgRecord),
 }
 
 pub trait Message {
@@ -167,6 +171,10 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
             MsgMove::from_bytes(header, &data[offset..])?,
         MSG_ID_SAY =>
             MsgSay::from_bytes(header, &data[offset..])?,
+        MSG_ID_REQRECORD =>
+            MsgReqRecord::from_bytes(header, &data[offset..])?,
+        MSG_ID_RECORD =>
+            MsgRecord::from_bytes(header, &data[offset..])?,
         _ =>
             return Err(ah::format_err!("from_bytes: Unknown ID ({}).", header.get_id())),
     };
@@ -344,6 +352,7 @@ define_trivial_message!(MsgReset, Reset, MSG_ID_RESET);
 define_trivial_message!(MsgReqRoomList, ReqRoomList, MSG_ID_REQROOMLIST);
 define_trivial_message!(MsgReqPlayerList, ReqPlayerList, MSG_ID_REQPLAYERLIST);
 define_trivial_message!(MsgReqGameState, ReqGameState, MSG_ID_REQGAMESTATE);
+define_trivial_message!(MsgReqRecord, ReqRecord, MSG_ID_REQRECORD);
 
 //////////////////////////////////////////////////////////////////////////////
 // MsgResult
@@ -654,6 +663,109 @@ impl Message for MsgGameState {
         data.extend_from_slice(&self.moving_y.to_net());
         data.extend_from_slice(&self.turn.to_net());
         assert_eq!(data.len(), MSG_GAME_STATE_SIZE as usize);
+        data
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// MsgRecord
+//////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug)]
+pub struct MsgRecord {
+    header:         MsgHeader,
+    total_count:    u32,
+    index:          u32,
+    record_len:     u32,
+    record:         [u8; MSG_MAXRECORDLEN],
+}
+
+const MSG_MAXRECORDLEN: usize = 0x200;
+const MSG_RECORD_SIZE: u32 = MSG_HEADER_SIZE +
+                             (3 * 4) +
+                             MSG_MAXRECORDLEN as u32;
+
+impl MsgRecord {
+    pub fn new(record: &str) -> Vec<MsgRecord> {
+        let record_bytes = record.as_bytes();
+        let total_count = (record_bytes.len() + MSG_MAXRECORDLEN - 1) / MSG_MAXRECORDLEN;
+        let mut ret = Vec::with_capacity(total_count);
+        for i in 0..total_count {
+            let len = min(record_bytes.len() - (i * MSG_MAXRECORDLEN),
+                          MSG_MAXRECORDLEN);
+            let mut rec = [0; MSG_MAXRECORDLEN];
+            rec[0..len].copy_from_slice(&record_bytes[i*MSG_MAXRECORDLEN..i*MSG_MAXRECORDLEN+len]);
+            ret.push(MsgRecord {
+                header:     MsgHeader::new(MSG_MAGIC,
+                                           MSG_RECORD_SIZE,
+                                           MSG_ID_RECORD,
+                                           0),
+                total_count:    total_count as u32,
+                index:          i as u32,
+                record_len:     len as u32,
+                record:         rec,
+            })
+        }
+        ret
+    }
+
+    pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
+        if data.len() >= (MSG_RECORD_SIZE - MSG_HEADER_SIZE) as usize {
+            let mut offset = 0;
+
+            let total_count = u32::from_net(&data[offset..])?;
+            offset += 4;
+            let index = u32::from_net(&data[offset..])?;
+            offset += 4;
+            let (record_len, record, offset) = extract_str!(
+                MSG_MAXRECORDLEN, data, offset);
+
+            let msg = MsgRecord {
+                header,
+                total_count,
+                index,
+                record_len,
+                record,
+            };
+            assert_eq!(offset, (MSG_RECORD_SIZE - MSG_HEADER_SIZE) as usize);
+            Ok((offset, Box::new(msg)))
+        } else {
+            Err(ah::format_err!("MsgRecord: Not enough data."))
+        }
+    }
+
+    pub fn get_total_count(&self) -> u32 {
+        self.total_count
+    }
+
+    pub fn get_index(&self) -> u32 {
+        self.index
+    }
+
+    fn get_record_part(&self) -> &[u8] {
+        &self.record[0..self.record_len as usize]
+    }
+
+    pub fn assemble_parts(parts: Vec<MsgRecord>) -> ah::Result<String> {
+        let bytes: Vec<u8> = parts
+            .iter()
+            .map(|m| m.get_record_part())
+            .fold(vec![], |mut a, b| { a.extend_from_slice(&b); a });
+        String::from_net(&bytes, bytes.len(), false)
+    }
+}
+
+impl Message for MsgRecord {
+    msg_trait_define_common!(Record);
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut data = Vec::with_capacity(MSG_RECORD_SIZE as usize);
+        self.header.to_bytes(&mut data);
+        data.extend_from_slice(&self.total_count.to_net());
+        data.extend_from_slice(&self.index.to_net());
+        data.extend_from_slice(&self.record_len.to_net());
+        data.extend_from_slice(&self.record);
+        assert_eq!(data.len(), MSG_RECORD_SIZE as usize);
         data
     }
 }

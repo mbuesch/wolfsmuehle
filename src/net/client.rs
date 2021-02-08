@@ -18,6 +18,8 @@
 //
 
 use anyhow as ah;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::{
     Read,
     Write,
@@ -27,6 +29,7 @@ use std::net::{
     TcpStream,
     ToSocketAddrs,
 };
+use std::time::Instant;
 use crate::player::{
     PlayerMode,
     player_mode_to_num,
@@ -40,8 +43,10 @@ use crate::net::protocol::{
     MsgMove,
     MsgNop,
     MsgPing,
+    MsgRecord,
     MsgReqGameState,
     MsgReqPlayerList,
+    MsgReqRecord,
     MsgReqRoomList,
     MsgReset,
     MsgSay,
@@ -50,7 +55,7 @@ use crate::net::protocol::{
     message_from_bytes,
     net_sync,
 };
-use std::time::Instant;
+use itertools::Itertools;
 
 const DEBUG_RAW: bool = false;
 
@@ -143,17 +148,13 @@ impl Client {
         self.wait_for_reply(name, timeout,
             |m| {
                 match m.get_message() {
-                    MsgType::Result(result) => {
-                        if result.is_in_reply_to(msg) {
-                            if result.is_ok() {
-                                Some(Ok(()))
-                            } else {
-                                Some(Err(ah::format_err!("Server replied not-Ok ({}): {}.",
-                                                         result.get_result_code(),
-                                                         result.get_text())))
-                            }
+                    MsgType::Result(result) if result.is_in_reply_to(msg) => {
+                        if result.is_ok() {
+                            Some(Ok(()))
                         } else {
-                            None
+                            Some(Err(ah::format_err!("Server replied not-Ok ({}): {}.",
+                                                     result.get_result_code(),
+                                                     result.get_text())))
                         }
                     }
                     _ => None,
@@ -227,6 +228,46 @@ impl Client {
     pub fn send_request_roomlist(&mut self) -> ah::Result<()> {
         self.send_msg(&mut MsgReqRoomList::new())?;
         Ok(())
+    }
+
+    /// Fetch the game record, synchronously.
+    pub fn fetch_record(&mut self) -> ah::Result<String> {
+        let mut request = MsgReqRecord::new();
+        self.send_msg(&mut request)?;
+        let ret = RefCell::new(HashMap::new());
+        loop {
+            self.wait_for_reply("record", 1.0,
+                |msg| {
+                    match msg.get_message() {
+                        MsgType::Record(m) => {
+                            ret.borrow_mut().insert(m.get_index(), m.clone());
+                            Some(Ok(()))
+                        },
+                        MsgType::Result(m) if m.is_in_reply_to(&request) => {
+                            Some(Ok(()))
+                        },
+                        _ => None
+                    }
+                })?;
+            let ret = ret.borrow();
+            if ret.len() >= 1 {
+                let count = ret.iter().next().unwrap().1.get_total_count();
+                if count > 0x1000 {
+                    return Err(ah::format_err!("Received MsgRecord with very big total_count."));
+                }
+                if ret.len() >= count as usize {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        MsgRecord::assemble_parts(
+            ret.into_inner()
+            .iter()
+            .sorted_by(|a, b| Ord::cmp(a.0, b.0))
+            .map(|x| x.1.clone())
+            .collect())
     }
 
     /// Send a chat message to the server.
