@@ -13,6 +13,7 @@ authors         = ["Michael Buesch <m@bues.ch>"]
 
 categories      = []
 keywords        = ["boardgame"]
+publish         = false
 
 exclude         = ["/maintenance/"]
 
