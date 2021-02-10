@@ -189,14 +189,12 @@ fn num_to_move_state(move_state: (u32, u32, u32)) -> ah::Result<MoveState> {
 enum Turn {
     Sheep,
     Wolf,
-    WolfchainOrSheep,
 }
 
 const fn turn_to_num(turn: &Turn) -> u32 {
     match turn {
-        Turn::Sheep =>              0,
-        Turn::Wolf =>               1,
-        Turn::WolfchainOrSheep =>   2,
+        Turn::Sheep => 0,
+        Turn::Wolf => 1,
     }
 }
 
@@ -204,7 +202,7 @@ fn num_to_turn(turn: u32) -> ah::Result<Turn> {
     match turn {
         0 => Ok(Turn::Sheep),
         1 => Ok(Turn::Wolf),
-        2 => Ok(Turn::WolfchainOrSheep),
+        2 => Ok(Turn::Wolf), // backward compat: was WolfchainOrSheep
         turn => Err(ah::format_err!("Unknown turn value: {}", turn)),
     }
 }
@@ -488,6 +486,20 @@ impl GameState {
             },
         }
 
+        // Check if this is our turn.
+        match self.turn {
+            Turn::Sheep => {
+                if from_state != FieldState::Sheep {
+                    return ValidationResult::Invalid;
+                }
+            },
+            Turn::Wolf => {
+                if from_state != FieldState::Wolf {
+                    return ValidationResult::Invalid;
+                }
+            },
+        }
+
         let distx = to_pos.x as isize - from_pos.x as isize;
         let centerx = from_pos.x as isize + (distx / 2);
         let disty = to_pos.y as isize - from_pos.y as isize;
@@ -565,34 +577,6 @@ impl GameState {
             Print::error("Internal error: validate_move() invalid state.");
         }
 
-        // Check if this is our turn.
-        match self.turn {
-            Turn::Sheep => {
-                if from_state != FieldState::Sheep {
-                    return ValidationResult::Invalid;
-                }
-            },
-            Turn::WolfchainOrSheep => {
-                if from_state == FieldState::Wolf {
-                    match result {
-                        ValidationResult::Invalid |
-                        ValidationResult::Valid => {
-                            // Wolf chain jump is only valid,
-                            // if it captures more sheep.
-                            return ValidationResult::Invalid;
-                        },
-                        ValidationResult::ValidCapture(_) =>
-                            (), // Ok
-                    }
-                }
-            },
-            Turn::Wolf => {
-                if from_state != FieldState::Wolf {
-                    return ValidationResult::Invalid;
-                }
-            },
-        }
-
         result
     }
 
@@ -603,40 +587,29 @@ impl GameState {
     }
 
     fn next_turn(&mut self) {
-        let calc_wolf_turn = || {
-            // The next turn is sheep, except if a wolf has just captured a sheep
-            // and it can capture another one.
-            if let Some(wolf_pos) = self.just_captured {
-                for offset in &CAPTURE_OFFSETS {
-                    let to_pos = wolf_pos + *offset;
-                    match self.validate_move(wolf_pos, to_pos) {
-                        ValidationResult::ValidCapture(_) => {
-                            Print::debug("Wolf can capture more sheep.");
-                            return Turn::WolfchainOrSheep;
-                        },
-                        ValidationResult::Invalid | ValidationResult::Valid =>
-                            (),
+        match self.turn {
+            Turn::Sheep => {
+                self.turn = Turn::Wolf;
+            },
+            Turn::Wolf => {
+                // The next turn is sheep, except if a wolf has just captured a sheep
+                // and it can capture another one.
+                let mut more = false;
+                if let Some(wolf_pos) = self.just_captured {
+                    for offset in &CAPTURE_OFFSETS {
+                        let to_pos = wolf_pos + *offset;
+                        match self.validate_move(wolf_pos, to_pos) {
+                            ValidationResult::ValidCapture(_) => {
+                                Print::debug("Wolf can capture more sheep.");
+                                more = true;
+                            },
+                            ValidationResult::Invalid | ValidationResult::Valid =>
+                                (),
+                        }
                     }
                 }
-            }
-            Turn::Sheep
-        };
-
-        match self.turn {
-            Turn::Sheep =>
-                self.turn = Turn::Wolf,
-            Turn::WolfchainOrSheep => {
-                match self.moving {
-                    MoveState::NoMove =>
-                        Print::error("Internal error: next_turn() no move."),
-                    MoveState::Wolf(_) =>
-                        self.turn = calc_wolf_turn(),
-                    MoveState::Sheep(_) =>
-                        self.turn = Turn::Wolf,
-                }
+                self.turn = if more { Turn::Wolf } else { Turn::Sheep };
             },
-            Turn::Wolf =>
-                self.turn = calc_wolf_turn(),
         }
         self.just_captured = None;
         self.print_turn();
