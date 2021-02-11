@@ -96,6 +96,21 @@ const CAPTURE_OFFSETS: [Coord; 12] = [
     coord!(1, 2),
 ];
 
+/// All possible relative non-capture move offsets.
+const MOVE_OFFSETS: [Coord; 8] = [
+    // horizontal
+    coord!(1, 0),
+    coord!(-1, 0),
+    // vertical
+    coord!(0, 1),
+    coord!(0, -1),
+    // diagonal
+    coord!(-1, -1),
+    coord!(-1, 1),
+    coord!(1, -1),
+    coord!(1, 1),
+];
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum FieldState {
     Unused,
@@ -370,6 +385,42 @@ impl GameState {
         self.stats
     }
 
+    fn wolves_are_stuck(&self) -> bool {
+        if self.turn != Turn::Wolf {
+            return false;
+        }
+
+        let mut can_move = false;
+        for coord in BoardIterator::new() {
+            match self.fields[coord.y as usize][coord.x as usize] {
+                FieldState::Wolf => {
+                    // Check if this wolf can do a valid move.
+                    for offset in &MOVE_OFFSETS {
+                        let to_pos = coord + *offset;
+                        match self.validate_move(coord, to_pos) {
+                            ValidationResult::Valid => can_move = true,
+                            ValidationResult::Invalid | ValidationResult::ValidCapture(_) => (),
+                        }
+                    }
+                    // Check if this wolf can do a valid capture.
+                    for offset in &CAPTURE_OFFSETS {
+                        let to_pos = coord + *offset;
+                        match self.validate_move(coord, to_pos) {
+                            ValidationResult::ValidCapture(_) => can_move = true,
+                            ValidationResult::Invalid | ValidationResult::Valid => (),
+                        }
+                    }
+                },
+                FieldState::Sheep | FieldState::Unused | FieldState::Empty => {
+                },
+            }
+            if can_move {
+                break;
+            }
+        }
+        !can_move
+    }
+
     pub fn get_win_state(&self) -> WinState {
         if self.get_stats().sheep < 7 {
             WinState::Wolf
@@ -390,8 +441,9 @@ impl GameState {
             }
             if sheep_win {
                 WinState::Sheep
+            } else if self.wolves_are_stuck() {
+                WinState::Sheep
             } else {
-                //TODO check: wolf is unable to move -> sheep win.
                 WinState::Undecided
             }
         }
