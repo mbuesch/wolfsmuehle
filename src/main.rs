@@ -165,7 +165,7 @@ fn app_fn(app: &gtk::Application) {
                     room_name,
                     opt.player_name,
                     player_mode)
-        .expect_or_exit_perror("Startup failed")
+        .expect_or_exit_perror_("Startup failed")
         .borrow()
         .main_window()
         .show();
