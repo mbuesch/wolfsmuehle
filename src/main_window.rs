@@ -32,6 +32,7 @@ use crate::print::Print;
 use expect_exit::exit_unwind;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 const ABOUT_TEXT: &str =
     "Wolfsmühle - Board game\n\
@@ -73,17 +74,17 @@ impl MainWindow {
         // Create main window.
         let glade_source = include_str!("main_window.glade");
         let builder = gtk::Builder::from_string(glade_source);
-        let appwindow: gtk::ApplicationWindow = builder.get_object("mainwindow").unwrap();
+        let appwindow: gtk::ApplicationWindow = builder.object("mainwindow").unwrap();
         appwindow.set_application(Some(app));
         appwindow.set_title("Wolfsmühle");
 
         // Other widgets.
-        let button_connect: gtk::MenuItem = builder.get_object("menubutton_connect").unwrap();
-        let button_disconnect: gtk::MenuItem = builder.get_object("menubutton_disconnect").unwrap();
+        let button_connect: gtk::MenuItem = builder.object("menubutton_connect").unwrap();
+        let button_disconnect: gtk::MenuItem = builder.object("menubutton_disconnect").unwrap();
         button_connect.set_sensitive(connect_to_server.is_none());
         button_disconnect.set_sensitive(connect_to_server.is_some());
-        let status_label: gtk::Label = builder.get_object("status_label").unwrap();
-        let game_meta_info_grid: gtk::Grid = builder.get_object("game_meta_info_grid").unwrap();
+        let status_label: gtk::Label = builder.object("status_label").unwrap();
+        let game_meta_info_grid: gtk::Grid = builder.object("game_meta_info_grid").unwrap();
 
         // Create game state.
         let game = Rc::new(RefCell::new(GameState::new(player_mode,
@@ -98,12 +99,12 @@ impl MainWindow {
         }
 
         // Create player state area.
-        let room_tree: gtk::TreeView = builder.get_object("room_tree").unwrap();
-        let player_tree: gtk::TreeView = builder.get_object("player_tree").unwrap();
-        let player_name_entry: gtk::Entry = builder.get_object("player_name_entry").unwrap();
-        let player_mode_combo: gtk::ComboBoxText = builder.get_object("player_mode_combo").unwrap();
-        let chat_text: gtk::TextView = builder.get_object("chat_text_view").unwrap();
-        let chat_say_entry: gtk::Entry = builder.get_object("chat_say_entry").unwrap();
+        let room_tree: gtk::TreeView = builder.object("room_tree").unwrap();
+        let player_tree: gtk::TreeView = builder.object("player_tree").unwrap();
+        let player_name_entry: gtk::Entry = builder.object("player_name_entry").unwrap();
+        let player_mode_combo: gtk::ComboBoxText = builder.object("player_mode_combo").unwrap();
+        let chat_text: gtk::TextView = builder.object("chat_text_view").unwrap();
+        let chat_say_entry: gtk::Entry = builder.object("chat_say_entry").unwrap();
         let game_meta_view = Rc::new(RefCell::new(
             GameMetaView::new(Rc::clone(&game),
                               room_tree,
@@ -115,7 +116,7 @@ impl MainWindow {
 
         // Create drawing area.
         let draw = Rc::new(RefCell::new(DrawingArea::new(
-            builder.get_object("drawing_area").unwrap(),
+            builder.object("drawing_area").unwrap(),
             Rc::clone(&game))?));
 
         let mainwnd = Rc::new(RefCell::new(MainWindow {
@@ -131,7 +132,8 @@ impl MainWindow {
 
         // Create game polling timer.
         let mainwnd2 = Rc::clone(&mainwnd);
-        glib::timeout_add_local(200, move || {
+        let period = Duration::from_millis(200);
+        glib::timeout_add_local(period, move || {
             if let Ok(mut mw) = mainwnd2.try_borrow_mut() {
                 mw.poll_timer();
             }
@@ -288,7 +290,7 @@ impl MainWindow {
                                           "Connect to a game server.\n\
                                            Enter the server address here:");
         dlg.set_default_response(gtk::ResponseType::Ok);
-        let content = dlg.get_content_area();
+        let content = dlg.content_area();
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
         hbox.add(&gtk::Label::new(Some("Host:")));
@@ -310,8 +312,8 @@ impl MainWindow {
 
         let result = dlg.run();
         let addr = format!("{}:{}",
-                           entry_addr.get_text().as_str(),
-                           entry_port.get_text().as_str());
+                           entry_addr.text().as_str(),
+                           entry_port.text().as_str());
 
         if result == gtk::ResponseType::Ok {
             self.draw.borrow_mut().reset_game();
@@ -353,7 +355,7 @@ impl MainWindow {
             gtk::FileChooserAction::Open,
             &[("_Cancel", gtk::ResponseType::Cancel), ("_Open", gtk::ResponseType::Accept)]);
         if dlg.run() == gtk::ResponseType::Accept {
-            if let Some(filename) = dlg.get_filename() {
+            if let Some(filename) = dlg.filename() {
                 if let Err(e) = self.draw.borrow_mut().load_game(filename.as_path()) {
                     err = Some(e);
                 }
@@ -374,7 +376,7 @@ impl MainWindow {
             gtk::FileChooserAction::Save,
             &[("_Cancel", gtk::ResponseType::Cancel), ("_Save", gtk::ResponseType::Accept)]);
         if dlg.run() == gtk::ResponseType::Accept {
-            if let Some(filename) = dlg.get_filename() {
+            if let Some(filename) = dlg.filename() {
                 if let Err(e) = self.draw.borrow().save_game(filename.as_path()) {
                     err = Some(e);
                 }

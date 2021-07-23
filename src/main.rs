@@ -188,11 +188,10 @@ fn main() -> ah::Result<()> {
 
     #[cfg(feature="gui")]
     if !run_server {
-        let app = gtk::Application::new(None, gio::ApplicationFlags::FLAGS_NONE)?;
+        let app = gtk::Application::new(None, gio::ApplicationFlags::FLAGS_NONE);
         app.connect_activate(app_fn);
-        //let args: Vec<_> = env::args().collect();
-        let args = vec![];
-        app.run(&args);
+        let args: Vec<&str> = vec![];
+        app.run_with_args(&args);
     }
     Ok(())
 }

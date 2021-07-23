@@ -29,7 +29,7 @@ pub use gtk;
 #[macro_export]
 macro_rules! gsigparam {
     ($param:expr, $type:ty) => {
-        $param.get::<$type>().unwrap().unwrap()
+        $param.get::<$type>().unwrap()
     }
 }
 
@@ -61,12 +61,11 @@ pub type GSigHandler = Box<dyn Fn(&[glib::Value]) -> Option<glib::Value> + 'stat
 
 fn prepare_message_dialog(msg: &mut gtk::MessageDialog) {
     // Make the text selectable.
-    if let Some(area) = msg.get_message_area() {
-        if let Some(cont) = area.downcast_ref::<gtk::Container>() {
-            for child in cont.get_children() {
-                if let Some(label) = child.downcast_ref::<gtk::Label>() {
-                    label.set_selectable(true);
-                }
+    let area = msg.message_area();
+    if let Some(cont) = area.downcast_ref::<gtk::Container>() {
+        for child in cont.children() {
+            if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                label.set_selectable(true);
             }
         }
     }

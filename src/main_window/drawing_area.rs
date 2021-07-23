@@ -167,18 +167,18 @@ impl DrawingArea {
         cairo.set_line_width(0.0);
         cairo.rectangle(0.0,
                         0.0,
-                        self.widget.get_allocated_width() as f64,
-                        self.widget.get_allocated_height() as f64);
-        cairo.fill();
+                        self.widget.allocated_width() as f64,
+                        self.widget.allocated_height() as f64);
+        cairo.fill().ok();
 
         // Draw sky.
         cairo.set_source_rgb(0.0, 0.49, 0.69);
         let pos = pos2pix(&coord!(0, 2));
         cairo.rectangle(0.0,
                         0.0,
-                        self.widget.get_allocated_width() as f64,
+                        self.widget.allocated_width() as f64,
                         pos.1);
-        cairo.fill();
+        cairo.fill().ok();
 
         // Draw barn.
         cairo.set_source_rgb(0.35, 0.22, 0.15);
@@ -188,7 +188,7 @@ impl DrawingArea {
         let pos = pos2pix(&coord!(1, 2)); cairo.line_to(pos.0, pos.1);
         let pos = pos2pix(&coord!(1, 1)); cairo.line_to(pos.0, pos.1);
         let pos = pos2pix(&coord!(2, 0)); cairo.line_to(pos.0, pos.1);
-        cairo.fill();
+        cairo.fill().ok();
     }
 
     fn draw_board_lines(&self, cairo: &cairo::Context) {
@@ -198,16 +198,16 @@ impl DrawingArea {
             cairo.move_to(pos2pix(from).0, pos2pix(from).1);
             cairo.line_to(pos2pix(to).0, pos2pix(to).1);
         }
-        cairo.stroke();
+        cairo.stroke().ok();
     }
 
     fn draw_token(&self, cairo: &cairo::Context,
                   pos: (f64, f64),
                   pixbuf: &gdk_pixbuf::Pixbuf) {
         cairo.set_source_pixbuf(&pixbuf,
-                                pos.0 - (pixbuf.get_width() / 2) as f64,
-                                pos.1 - (pixbuf.get_height() / 2) as f64);
-        cairo.paint();
+                                pos.0 - (pixbuf.width() / 2) as f64,
+                                pos.1 - (pixbuf.height() / 2) as f64);
+        cairo.paint().ok();
     }
 
     fn draw_token_wolf_pix(&self, cairo: &cairo::Context,
@@ -260,7 +260,7 @@ impl DrawingArea {
         // Draw the captured tokens.
         let stats = game.get_stats();
         let mut y = 25.0;
-        let x = self.widget.get_allocated_width() as f64 - 35.0;
+        let x = self.widget.allocated_width() as f64 - 35.0;
         for _ in 0..stats.sheep_captured {
             self.draw_token_sheep_pix(cairo, (x, y), false);
             y += 20.0;
@@ -285,10 +285,11 @@ impl DrawingArea {
                                    cairo::FontSlant::Normal,
                                    cairo::FontWeight::Bold);
             let text = format!("{} won!", win_state);
-            let extents = cairo.text_extents(&text);
-            cairo.move_to((self.widget.get_allocated_width() as f64 / 2.0) - (extents.width / 2.0),
-                          (self.widget.get_allocated_height() as f64 / 2.0) + (extents.height / 2.0));
-            cairo.show_text(&text);
+            if let Ok(extents) = cairo.text_extents(&text) {
+                cairo.move_to((self.widget.allocated_width() as f64 / 2.0) - (extents.width / 2.0),
+                              (self.widget.allocated_height() as f64 / 2.0) + (extents.height / 2.0));
+                cairo.show_text(&text).ok();
+            }
         }
     }
 
@@ -389,7 +390,7 @@ impl DrawingArea {
     fn gsignal_motionnotify(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
         let _widget = gsigparam!(param[0], gtk::DrawingArea);
         let event = gsigparam!(param[1], gdk::Event);
-        let (x, y) = event.get_coords().unwrap();
+        let (x, y) = event.coords().unwrap();
         self.mousemove(x, y);
         Some(false.to_value())
     }
@@ -397,16 +398,16 @@ impl DrawingArea {
     fn gsignal_buttonpress(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
         let _widget = gsigparam!(param[0], gtk::DrawingArea);
         let event = gsigparam!(param[1], gdk::Event);
-        let (x, y) = event.get_coords().unwrap();
-        self.mousebutton(x, y, event.get_button().unwrap(), true);
+        let (x, y) = event.coords().unwrap();
+        self.mousebutton(x, y, event.button().unwrap(), true);
         Some(false.to_value())
     }
 
     fn gsignal_buttonrelease(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
         let _widget = gsigparam!(param[0], gtk::DrawingArea);
         let event = gsigparam!(param[1], gdk::Event);
-        let (x, y) = event.get_coords().unwrap();
-        self.mousebutton(x, y, event.get_button().unwrap(), false);
+        let (x, y) = event.coords().unwrap();
+        self.mousebutton(x, y, event.button().unwrap(), false);
         Some(false.to_value())
     }
 

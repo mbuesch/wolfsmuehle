@@ -96,10 +96,9 @@ impl GameMetaView {
 
             self.playerlist_model.insert_with_values(
                 None,
-                &[0, 1, 2],
-                &[&player.name,
-                  &format!("{}", player.mode),
-                  &if player.is_self { "<---" } else { "" }, ]
+                &[(0, &player.name),
+                  (1, &format!("{}", player.mode)),
+                  (2, &if player.is_self { "<---" } else { "" }), ]
             );
         }
         self.displayed_playerlist = player_list.clone();
@@ -108,7 +107,7 @@ impl GameMetaView {
     fn do_update_local_player(&mut self, player_list: &PlayerList) {
         for player in player_list.iter() {
             if player.is_self {
-                if self.player_name_entry.get_text() != player.name {
+                if self.player_name_entry.text() != player.name {
                     self.player_name_entry.set_text(&player.name);
                 }
                 if self.get_player_mode() != player.mode {
@@ -154,9 +153,8 @@ impl GameMetaView {
 
                 self.roomlist_model.insert_with_values(
                     None,
-                    &[0, 1, ],
-                    &[&room_name,
-                      &if is_joined_room { "<---" } else { "" }, ]
+                    &[(0, &room_name),
+                      (1, &if is_joined_room { "<---" } else { "" }), ]
                 );
             }
             self.displayed_roomlist = room_list.clone();
@@ -164,7 +162,7 @@ impl GameMetaView {
     }
 
     fn handle_join_room_req(&mut self, tree_path: &gtk::TreePath) {
-        let index = tree_path.get_indices()[0];
+        let index = tree_path.indices()[0];
         if (index as usize) < self.displayed_roomlist.len() {
             let room_name = &self.displayed_roomlist[index as usize].to_string();
             {
@@ -191,7 +189,7 @@ impl GameMetaView {
     }
 
     fn playername_editdone(&mut self) {
-        let new_name = self.player_name_entry.get_text().as_str().to_string();
+        let new_name = self.player_name_entry.text().as_str().to_string();
         let result = self.game.borrow_mut().set_player_name(&new_name);
         match result {
             Ok(_) => (),
@@ -205,7 +203,7 @@ impl GameMetaView {
     }
 
     fn playermode_changed(&self) {
-        let new_mode = match self.player_mode_combo.get_active_id() {
+        let new_mode = match self.player_mode_combo.active_id() {
             Some(id) => {
                 match id.as_str() {
                     "spectator" => PlayerMode::Spectator,
@@ -229,7 +227,7 @@ impl GameMetaView {
     }
 
     fn get_player_mode(&self) -> PlayerMode {
-        if let Some(active_id) = self.player_mode_combo.get_active_id() {
+        if let Some(active_id) = self.player_mode_combo.active_id() {
             match active_id.as_str() {
                 "spectator" => PlayerMode::Spectator,
                 "wolf"      => PlayerMode::Wolf,
@@ -243,34 +241,34 @@ impl GameMetaView {
     }
 
     pub fn clear_chat_messages(&mut self) {
-        if let Some(buffer) = self.chat_text.get_buffer() {
+        if let Some(buffer) = self.chat_text.buffer() {
             buffer.set_text("");
         }
     }
 
     pub fn add_chat_messages(&mut self, messages: &Vec<String>) {
-        if let Some(buffer) = self.chat_text.get_buffer() {
-            let parent = self.chat_text.get_parent().unwrap();
+        if let Some(buffer) = self.chat_text.buffer() {
+            let parent = self.chat_text.parent().unwrap();
             let scroll = parent.downcast_ref::<gtk::ScrolledWindow>().unwrap();
 
             // Add all messages to the text view
-            let start = buffer.get_start_iter();
-            let end = buffer.get_end_iter();
-            let mut text = buffer.get_text(&start, &end, true).unwrap().as_str().to_string();
+            let start = buffer.start_iter();
+            let end = buffer.end_iter();
+            let mut text = buffer.text(&start, &end, true).unwrap().as_str().to_string();
             for m in messages {
                 text.push_str(&format!("{}\n", m));
             }
             buffer.set_text(&text);
 
             // Scroll to the bottom.
-            let adj = scroll.get_vadjustment().unwrap();
-            adj.set_value(adj.get_upper());
+            let adj = scroll.vadjustment();
+            adj.set_value(adj.upper());
             scroll.set_vadjustment(Some(&adj));
         }
     }
 
     fn handle_chat_say(&mut self) {
-        let text = self.chat_say_entry.get_text();
+        let text = self.chat_say_entry.text();
         if !text.as_str().is_empty() {
             Print::debug(&format!("Say: {}", text));
             let ret = self.game.borrow_mut().client_send_chat_message(text.as_str());
