@@ -19,6 +19,8 @@ rem
 setlocal ENABLEDELAYEDEXPANSION
 
 set project=wolfsmuehle
+set exe=%project%.exe
+set version_crate_subdir=.
 
 set GTK_DIR=C:\gtk-build\gtk\x64\release
 set GTK_BIN=%GTK_DIR%\bin
@@ -32,9 +34,9 @@ if ERRORLEVEL 1 goto error_basedir
 
 call :detect_version
 if "%PROCESSOR_ARCHITECTURE%" == "x86" (
-	set winprefix=win32
+    set winprefix=win32
 ) else (
-	set winprefix=win64
+    set winprefix=win64
 )
 set distdir=%project%-%winprefix%-%version%
 set sfxfile=%project%-%winprefix%-%version%.package.exe
@@ -50,9 +52,17 @@ pause
 exit /B 0
 
 :detect_version
+    pushd %version_crate_subdir%
+    if not exist Cargo.lock (
+        cargo update
+        if ERRORLEVEL 1 goto error_version
+    )
     for /f "tokens=2 delims=#" %%a in ('cargo pkgid') do set version=%%a
+    for /f "tokens=2 delims=:" %%a in ("%version%") do set version=%%a
     if ERRORLEVEL 1 goto error_version
-	exit /B 0
+    echo Detected version: %version%
+    popd
+    exit /B 0
 
 :prepare_env
     rd /S /Q %distdir% 2>NUL
@@ -74,7 +84,7 @@ exit /B 0
 :copy_files
     mkdir %distdir%\bin
     if ERRORLEVEL 1 goto error_copy
-    copy target\release\wolfsmuehle.exe %distdir%\bin\
+    copy target\release\%exe% %distdir%\bin\
     if ERRORLEVEL 1 goto error_copy
     xcopy /E /I %GTK_DIR% %distdir%\gtk
     if ERRORLEVEL 1 goto error_copy
@@ -86,8 +96,9 @@ exit /B 0
     set wrapper=%distdir%\wolfsmuehle.cmd
     echo @echo off > %wrapper%
     echo set PATH=gtk\bin;%%PATH%% >> %wrapper%
-    echo start bin\wolfsmuehle.exe %%1 %%2 %%3 %%4 %%5 %%6 %%7 %%8 %%9 >> %wrapper%
+    echo start bin\%exe% %%1 %%2 %%3 %%4 %%5 %%6 %%7 %%8 %%9 >> %wrapper%
     if ERRORLEVEL 1 goto error_wrapper
+    exit /B 0
 
 :archive
     7z a -mx=9 -sfx7z.sfx %sfxfile% %distdir%
