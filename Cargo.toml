@@ -23,19 +23,19 @@ gui             = ["cairo-rs", "expect-exit", "gdk", "gdk-pixbuf", "gio", "glib"
 server          = []
 
 [dependencies]
-anyhow          = "1.0.0"
-itertools       = "0.10.0"
-lazy_static     = "1.0.0"
-rand            = "0.8.0"
-structopt       = "0.3.0"
+anyhow          = "1"
+itertools       = "0.10"
+lazy_static     = "1"
+rand            = "0.8"
+structopt       = "0.3"
 
-cairo-rs        = { version = "0.14.0", optional = true }
-expect-exit     = { version = "0.4.0", optional = true }
-gdk             = { version = "0.14.0", optional = true }
-gdk-pixbuf      = { version = "0.14.0", optional = true }
-gio             = { version = "0.14.0", optional = true }
-glib            = { version = "0.14.0", optional = true }
-gtk             = { version = "0.14.0", optional = true }
+cairo-rs        = { version = "0.15", optional = true }
+expect-exit     = { version = "0.4", optional = true }
+gdk             = { version = "0.15", optional = true }
+gdk-pixbuf      = { version = "0.15", optional = true }
+gio             = { version = "0.15", optional = true }
+glib            = { version = "0.15", optional = true }
+gtk             = { version = "0.15", optional = true }
 
 [profile.release]
 lto             = "thin"
