@@ -76,7 +76,7 @@ struct Opts {
     #[structopt(short="M", long, default_value="10")]
     max_connections: u16,
 
-    /// Server room to open/join.
+    /// Server room to open (server) or join (client).
     #[structopt(short, long)]
     room: Option<Vec<String>>,
 
@@ -89,6 +89,7 @@ struct Opts {
     restrict_player_modes: bool,
 
     /// Connect to a server.
+    #[cfg(feature="gui")]
     #[structopt(short, long)]
     connect: Option<String>,
 
