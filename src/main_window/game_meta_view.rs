@@ -50,8 +50,8 @@ impl GameMetaView {
         for i in 0..2 {
             let column = gtk::TreeViewColumn::new();
             let cell = gtk::CellRendererText::new();
-            column.pack_start(&cell, true);
-            column.add_attribute(&cell, "text", i);
+            CellLayoutExt::pack_start(&column, &cell, true);
+            TreeViewColumnExt::add_attribute(&column, &cell, "text", i);
             column.set_title(["Room name",
                               "joined", ][i as usize]);
             room_tree_view.append_column(&column);
@@ -64,8 +64,8 @@ impl GameMetaView {
         for i in 0..3 {
             let column = gtk::TreeViewColumn::new();
             let cell = gtk::CellRendererText::new();
-            column.pack_start(&cell, true);
-            column.add_attribute(&cell, "text", i);
+            CellLayoutExt::pack_start(&column, &cell, true);
+            TreeViewColumnExt::add_attribute(&column, &cell, "text", i);
             column.set_title(["Player name",
                               "Mode",
                               "is me", ][i as usize]);

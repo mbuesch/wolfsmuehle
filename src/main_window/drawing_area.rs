@@ -286,8 +286,8 @@ impl DrawingArea {
                                    cairo::FontWeight::Bold);
             let text = format!("{} won!", win_state);
             if let Ok(extents) = cairo.text_extents(&text) {
-                cairo.move_to((self.widget.allocated_width() as f64 / 2.0) - (extents.width / 2.0),
-                              (self.widget.allocated_height() as f64 / 2.0) + (extents.height / 2.0));
+                cairo.move_to((self.widget.allocated_width() as f64 / 2.0) - (extents.width() / 2.0),
+                              (self.widget.allocated_height() as f64 / 2.0) + (extents.height() / 2.0));
                 cairo.show_text(&text).ok();
             }
         }

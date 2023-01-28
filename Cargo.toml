@@ -29,13 +29,13 @@ lazy_static     = "1"
 rand            = "0.8"
 structopt       = "0.3"
 
-cairo-rs        = { version = "0.15", optional = true }
-expect-exit     = { version = "0.4", optional = true }
-gdk             = { version = "0.15", optional = true }
-gdk-pixbuf      = { version = "0.15", optional = true }
-gio             = { version = "0.15", optional = true }
-glib            = { version = "0.15", optional = true }
-gtk             = { version = "0.15", optional = true }
+cairo-rs        = { version = "0.16", optional = true }
+expect-exit     = { version = "0.5", optional = true }
+gdk             = { version = "0.16", optional = true }
+gdk-pixbuf      = { version = "0.16", optional = true }
+gio             = { version = "0.16", optional = true }
+glib            = { version = "0.16", optional = true }
+gtk             = { version = "0.16", optional = true }
 
 [profile.release]
 lto             = "thin"
