@@ -40,8 +40,6 @@ use crate::player::PlayerMode;
 #[cfg(feature="server")]
 use crate::net::server::Server;
 #[cfg(feature="gui")]
-use expect_exit::{ExpectedWithError, exit};
-#[cfg(feature="gui")]
 use gio::prelude::*;
 #[cfg(feature="gui")]
 use gtk::prelude::*;
@@ -158,7 +156,7 @@ fn app_fn(app: &gtk::Application) {
         "sheep" => PlayerMode::Sheep,
         "both" => PlayerMode::Both,
         "spectator" => PlayerMode::Spectator,
-        _ => exit("Invalid --player-mode."),
+        _ => panic!("Invalid --player-mode."),
     };
 
     MainWindow::new(app,
@@ -166,7 +164,7 @@ fn app_fn(app: &gtk::Application) {
                     room_name,
                     opt.player_name,
                     player_mode)
-        .expect_or_exit_perror_("Startup failed")
+        .expect("Startup failed")
         .borrow()
         .main_window()
         .show();

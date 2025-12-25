@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 [package]
-edition         = "2018"
+edition         = "2024"
 name            = "wolfsmuehle"
 description     = "Wolfsmühle - Board game"
 version         = "1.1.0"
@@ -19,7 +19,7 @@ exclude         = ["/maintenance/"]
 
 [features]
 default         = ["gui", "server"]
-gui             = ["cairo-rs", "expect-exit", "gdk", "gdk-pixbuf", "gio", "glib", "gtk"]
+gui             = ["cairo-rs", "gdk", "gdk-pixbuf", "gio", "glib", "gtk"]
 server          = []
 
 [dependencies]
@@ -30,7 +30,6 @@ rand            = "0.8"
 structopt       = "0.3"
 
 cairo-rs        = { version = "0.16", optional = true }
-expect-exit     = { version = "0.5", optional = true }
 gdk             = { version = "0.16", optional = true }
 gdk-pixbuf      = { version = "0.16", optional = true }
 gio             = { version = "0.16", optional = true }

@@ -64,9 +64,11 @@ type FieldsArray = [[u32; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 
 #[derive(Debug)]
 pub enum MsgType<'a> {
+    #[allow(dead_code)]
     Nop(&'a MsgNop),
     Result(&'a MsgResult),
     Ping(&'a MsgPing),
+    #[allow(dead_code)]
     Pong(&'a MsgPong),
     Join(&'a MsgJoin),
     Leave(&'a MsgLeave),
@@ -87,11 +89,7 @@ pub trait Message {
     fn get_header(&self) -> &MsgHeader;
     fn get_header_mut(&mut self) -> &mut MsgHeader;
     fn to_bytes(&self) -> Vec<u8>;
-    fn get_message(&self) -> MsgType;
-
-    fn get_id(&self) -> u32 {
-        self.get_header().get_id()
-    }
+    fn get_message(&self) -> MsgType<'_>;
 }
 
 /// Helper function: Skip a given length in a buffer.
@@ -193,7 +191,7 @@ macro_rules! msg_trait_define_common {
             &mut self.header
         }
 
-        fn get_message(&self) -> MsgType {
+        fn get_message(&self) -> MsgType<'_> {
             MsgType::$msg_type(self)
         }
     }

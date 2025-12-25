@@ -165,7 +165,7 @@ impl PlayerList {
         }
     }
 
-    pub fn iter(&self) -> PlayerListIterator {
+    pub fn iter(&self) -> PlayerListIterator<'_> {
         PlayerListIterator::new(self)
     }
 }

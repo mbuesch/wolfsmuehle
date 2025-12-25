@@ -29,7 +29,6 @@ use crate::gsignal_connect_to_mut;
 use crate::gtk_helpers::*;
 use crate::player::PlayerMode;
 use crate::print::Print;
-use expect_exit::exit_unwind;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -395,7 +394,7 @@ impl MainWindow {
     }
 
     fn gsignal_quit(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
-        exit_unwind(0);
+        std::process::exit(0);
     }
 
     fn gsignal_about(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
