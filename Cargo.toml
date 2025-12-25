@@ -29,12 +29,12 @@ lazy_static     = "1"
 rand            = "0.9"
 clap            = { version = "4", features = [ "derive", "wrap_help", "unicode" ] }
 
-cairo-rs        = { version = "0.16", optional = true }
-gdk             = { version = "0.16", optional = true }
-gdk-pixbuf      = { version = "0.16", optional = true }
-gio             = { version = "0.16", optional = true }
-glib            = { version = "0.16", optional = true }
-gtk             = { version = "0.16", optional = true }
+cairo-rs        = { version = "0.18", optional = true }
+gdk             = { version = "0.18", optional = true }
+gdk-pixbuf      = { version = "0.18", optional = true }
+gio             = { version = "0.18", optional = true }
+glib            = { version = "0.18", optional = true }
+gtk             = { version = "0.18", optional = true }
 
 [profile.dev]
 debug           = "limited"

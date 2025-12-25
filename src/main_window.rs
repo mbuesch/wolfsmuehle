@@ -137,7 +137,7 @@ impl MainWindow {
             if let Ok(mut mw) = mainwnd2.try_borrow_mut() {
                 mw.poll_timer();
             }
-            glib::Continue(true)
+            glib::ControlFlow::Continue
         });
 
         // Connect signals.

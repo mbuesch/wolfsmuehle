@@ -116,6 +116,7 @@ impl DrawingArea {
         let sheep_xpm = conv_xpm(include_str!("sheep.xpm"))?;
 
         let wolf_pixbuf = gdk_pixbuf::Pixbuf::from_xpm_data(wolf_xpm.as_slice())
+            .map_err(|e| ah::format_err!("Failed to load wolf image: {}", e))?
             .scale_simple(70, 70, gdk_pixbuf::InterpType::Hyper)
             .ok_or(ah::format_err!("Failed to scale wolf image."))?;
         let wolf_moving_pixbuf = wolf_pixbuf
@@ -124,6 +125,7 @@ impl DrawingArea {
         wolf_moving_pixbuf.saturate_and_pixelate(&wolf_moving_pixbuf, 0.0, true);
 
         let sheep_pixbuf = gdk_pixbuf::Pixbuf::from_xpm_data(sheep_xpm.as_slice())
+            .map_err(|e| ah::format_err!("Failed to load sheep image: {}", e))?
             .scale_simple(50, 50, gdk_pixbuf::InterpType::Hyper)
             .ok_or(ah::format_err!("Failed to scale sheep image."))?;
         let sheep_moving_pixbuf = sheep_pixbuf

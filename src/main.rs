@@ -185,8 +185,7 @@ fn main() -> ah::Result<()> {
     if !run_server {
         let app = gtk::Application::new(None, gio::ApplicationFlags::FLAGS_NONE);
         app.connect_activate(app_fn);
-        let args: Vec<&str> = vec![];
-        app.run_with_args(&args);
+        app.run();
     }
     Ok(())
 }
