@@ -92,13 +92,21 @@ pub struct DrawingArea {
 
 impl DrawingArea {
     pub fn new(widget: gtk::DrawingArea, game: Rc<RefCell<GameState>>) -> ah::Result<DrawingArea> {
-        widget.add_events(
-            gdk::EventMask::POINTER_MOTION_MASK
-                | gdk::EventMask::POINTER_MOTION_HINT_MASK
-                | gdk::EventMask::BUTTON_MOTION_MASK
-                | gdk::EventMask::BUTTON_PRESS_MASK
-                | gdk::EventMask::BUTTON_RELEASE_MASK,
-        );
+        /*TODO
+        let motion_controller = gtk::EventControllerMotion::new();
+        motion_controller.connect_motion(|_, x, y| {
+            //TODO
+            println!("Pointer moved to: ({}, {})", x, y);
+        });
+        widget.add_controller(motion_controller.upcast_ref());
+
+        let click_controller = gtk::GestureClick::new();
+        click_controller.connect_pressed(|_, n_press, x, y| {
+            //TODO
+            println!("Button pressed {} times at ({}, {})", n_press, x, y);
+        });
+        widget.add_controller(&click_controller);
+        */
 
         let wolf_xpm = conv_xpm(include_str!("wolf.xpm"))?;
         let sheep_xpm = conv_xpm(include_str!("sheep.xpm"))?;
@@ -376,34 +384,46 @@ impl DrawingArea {
     }
 
     fn gsignal_draw(&self, param: &[glib::Value]) -> Option<glib::Value> {
+        /*
         let _widget = gsigparam!(param[0], gtk::DrawingArea);
         let cairo = gsigparam!(param[1], cairo::Context);
         self.draw(cairo);
         Some(false.to_value())
+        */
+        todo!()
     }
 
     fn gsignal_motionnotify(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        /*
         let _widget = gsigparam!(param[0], gtk::DrawingArea);
         let event = gsigparam!(param[1], gdk::Event);
         let (x, y) = event.coords().unwrap();
         self.mousemove(x, y);
         Some(false.to_value())
+        */
+        todo!()
     }
 
     fn gsignal_buttonpress(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        /*
         let _widget = gsigparam!(param[0], gtk::DrawingArea);
         let event = gsigparam!(param[1], gdk::Event);
         let (x, y) = event.coords().unwrap();
         self.mousebutton(x, y, event.button().unwrap(), true);
         Some(false.to_value())
+        */
+        todo!()
     }
 
     fn gsignal_buttonrelease(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        /*
         let _widget = gsigparam!(param[0], gtk::DrawingArea);
         let event = gsigparam!(param[1], gdk::Event);
         let (x, y) = event.coords().unwrap();
         self.mousebutton(x, y, event.button().unwrap(), false);
         Some(false.to_value())
+        */
+        todo!()
     }
 
     pub fn connect_signals(

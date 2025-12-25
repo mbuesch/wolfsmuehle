@@ -19,7 +19,7 @@ exclude         = ["/maintenance/"]
 
 [features]
 default         = ["gui", "server"]
-gui             = ["dep:cairo-rs", "dep:gdk", "dep:gdk-pixbuf", "dep:gio", "dep:glib", "dep:gtk"]
+gui             = ["dep:gtk4", "dep:gdk-pixbuf"]
 server          = []
 
 [dependencies]
@@ -28,13 +28,8 @@ itertools       = "0.14"
 lazy_static     = "1"
 rand            = "0.9"
 clap            = { version = "4", features = [ "derive", "wrap_help", "unicode" ] }
-
-cairo-rs        = { version = "0.18", optional = true }
-gdk             = { version = "0.18", optional = true }
-gdk-pixbuf      = { version = "0.18", optional = true }
-gio             = { version = "0.18", optional = true }
-glib            = { version = "0.18", optional = true }
-gtk             = { version = "0.18", optional = true }
+gtk4            = { version = "0.10", optional = true }
+gdk-pixbuf      = { version = "0.21", optional = true }
 
 [profile.dev]
 debug           = "limited"

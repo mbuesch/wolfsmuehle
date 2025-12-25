@@ -5,12 +5,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
 
-pub use gdk;
-pub use gdk::prelude::*;
-pub use gdk_pixbuf;
-pub use glib;
-pub use gtk;
-pub use gtk::prelude::*;
+pub use gtk4::{
+    self as gtk, cairo,
+    gdk::{self, prelude::*},
+    gio::{self, prelude::*},
+    glib::{self, prelude::*},
+    prelude::*,
+};
 
 #[macro_export]
 macro_rules! gsigparam {
@@ -44,18 +45,20 @@ pub type GSigHandler = Box<dyn Fn(&[glib::Value]) -> Option<glib::Value> + 'stat
 fn prepare_message_dialog(msg: &mut gtk::MessageDialog) {
     // Make the text selectable.
     let area = msg.message_area();
-    if let Some(cont) = area.downcast_ref::<gtk::Container>() {
-        for child in cont.children() {
-            if let Some(label) = child.downcast_ref::<gtk::Label>() {
+    if let Some(cont) = area.downcast_ref::<gtk::Box>() {
+        let mut child: Option<gtk::Widget> = cont.first_child();
+        while let Some(w) = child {
+            if let Some(label) = w.downcast_ref::<gtk::Label>() {
                 label.set_selectable(true);
             }
+            child = w.next_sibling();
         }
     }
     // Auto-close the dialog.
     msg.connect_response(|msg, _resp| msg.close());
 }
 
-pub fn messagebox_info<T: glib::IsA<gtk::Window>>(parent: Option<&T>, text: &str) {
+pub fn messagebox_info<T: IsA<gtk::Window>>(parent: Option<&T>, text: &str) {
     let mut msg = gtk::MessageDialog::new(
         parent,
         gtk::DialogFlags::MODAL,
@@ -64,10 +67,10 @@ pub fn messagebox_info<T: glib::IsA<gtk::Window>>(parent: Option<&T>, text: &str
         text,
     );
     prepare_message_dialog(&mut msg);
-    msg.run();
+    msg.show();
 }
 
-pub fn messagebox_error<T: glib::IsA<gtk::Window>>(parent: Option<&T>, text: &str) {
+pub fn messagebox_error<T: IsA<gtk::Window>>(parent: Option<&T>, text: &str) {
     let mut msg = gtk::MessageDialog::new(
         parent,
         gtk::DialogFlags::MODAL,
@@ -76,7 +79,7 @@ pub fn messagebox_error<T: glib::IsA<gtk::Window>>(parent: Option<&T>, text: &st
         text,
     );
     prepare_message_dialog(&mut msg);
-    msg.run();
+    msg.show();
 }
 
 // vim: ts=4 sw=4 expandtab

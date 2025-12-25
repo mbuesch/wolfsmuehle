@@ -41,7 +41,7 @@ impl GameMetaView {
             let column = gtk::TreeViewColumn::new();
             let cell = gtk::CellRendererText::new();
             CellLayoutExt::pack_start(&column, &cell, true);
-            TreeViewColumnExt::add_attribute(&column, &cell, "text", i);
+            column.add_attribute(&cell, "text", i);
             column.set_title(["Room name", "joined"][i as usize]);
             room_tree_view.append_column(&column);
         }
@@ -53,7 +53,7 @@ impl GameMetaView {
             let column = gtk::TreeViewColumn::new();
             let cell = gtk::CellRendererText::new();
             CellLayoutExt::pack_start(&column, &cell, true);
-            TreeViewColumnExt::add_attribute(&column, &cell, "text", i);
+            column.add_attribute(&cell, "text", i);
             column.set_title(["Player name", "Mode", "is me"][i as usize]);
             player_tree_view.append_column(&column);
         }
@@ -229,34 +229,31 @@ impl GameMetaView {
     }
 
     pub fn clear_chat_messages(&mut self) {
-        if let Some(buffer) = self.chat_text.buffer() {
-            buffer.set_text("");
-        }
+        let buffer = self.chat_text.buffer();
+        buffer.set_text("");
     }
 
     pub fn add_chat_messages(&mut self, messages: &Vec<String>) {
-        if let Some(buffer) = self.chat_text.buffer() {
-            let parent = self.chat_text.parent().unwrap();
-            let scroll = parent.downcast_ref::<gtk::ScrolledWindow>().unwrap();
+        let buffer = self.chat_text.buffer();
+        let parent = self.chat_text.parent().unwrap();
+        let scroll = parent.downcast_ref::<gtk::ScrolledWindow>().unwrap();
 
-            // Add all messages to the text view
-            let start = buffer.start_iter();
-            let end = buffer.end_iter();
-            let mut text = buffer
-                .text(&start, &end, true)
-                .unwrap()
-                .as_str()
-                .to_string();
-            for m in messages {
-                text.push_str(&format!("{}\n", m));
-            }
-            buffer.set_text(&text);
-
-            // Scroll to the bottom.
-            let adj = scroll.vadjustment();
-            adj.set_value(adj.upper());
-            scroll.set_vadjustment(Some(&adj));
+        // Add all messages to the text view
+        let start = buffer.start_iter();
+        let end = buffer.end_iter();
+        let mut text = buffer
+            .text(&start, &end, true)
+            .as_str()
+            .to_string();
+        for m in messages {
+            text.push_str(&format!("{}\n", m));
         }
+        buffer.set_text(&text);
+
+        // Scroll to the bottom.
+        let adj = scroll.vadjustment();
+        adj.set_value(adj.upper());
+        scroll.set_vadjustment(Some(&adj));
     }
 
     fn handle_chat_say(&mut self) {
@@ -296,11 +293,14 @@ impl GameMetaView {
     }
 
     fn gsignal_roomtree_rowactivated(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
+        /*
         let _tree_view = gsigparam!(param[0], gtk::TreeView);
         let path = gsigparam!(param[1], gtk::TreePath);
         let _column = gsigparam!(param[2], gtk::TreeViewColumn);
         self.handle_join_room_req(&path);
         None
+        */
+        todo!()
     }
 
     fn gsignal_chat_say(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {

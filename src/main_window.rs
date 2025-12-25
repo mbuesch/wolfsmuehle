@@ -29,8 +29,8 @@ const ABOUT_TEXT: &str = "Wolfsmühle - Board game\n\
 
 pub struct MainWindow {
     appwindow: gtk::ApplicationWindow,
-    button_connect: gtk::MenuItem,
-    button_disconnect: gtk::MenuItem,
+    button_connect: gtk::Button,
+    button_disconnect: gtk::Button,
     status_label: gtk::Label,
     game_meta_info_grid: gtk::Grid,
     draw: Rc<RefCell<DrawingArea>>,
@@ -51,11 +51,11 @@ impl MainWindow {
         let builder = gtk::Builder::from_string(glade_source);
         let appwindow: gtk::ApplicationWindow = builder.object("mainwindow").unwrap();
         appwindow.set_application(Some(app));
-        appwindow.set_title("Wolfsmühle");
+        appwindow.set_title(Some("Wolfsmühle"));
 
         // Other widgets.
-        let button_connect: gtk::MenuItem = builder.object("menubutton_connect").unwrap();
-        let button_disconnect: gtk::MenuItem = builder.object("menubutton_disconnect").unwrap();
+        let button_connect: gtk::Button = builder.object("menubutton_connect").unwrap();
+        let button_disconnect: gtk::Button = builder.object("menubutton_disconnect").unwrap();
         button_connect.set_sensitive(connect_to_server.is_none());
         button_disconnect.set_sensitive(connect_to_server.is_some());
         let status_label: gtk::Label = builder.object("status_label").unwrap();
@@ -120,7 +120,8 @@ impl MainWindow {
         let mainwnd2 = Rc::clone(&mainwnd);
         let draw2 = Rc::clone(&mainwnd.borrow().draw);
         let game_meta_view2 = Rc::clone(&mainwnd.borrow().game_meta_view);
-        builder.connect_signals(move |_builder, handler_name| {
+        /*TODO
+        builder.connect_signals(move |handler_name| {
             let mainwnd2 = Rc::clone(&mainwnd2);
             let game_meta_view2 = Rc::clone(&game_meta_view2);
 
@@ -150,6 +151,7 @@ impl MainWindow {
                 }
             }
         });
+        */
 
         mainwnd.borrow().update_status();
 
@@ -261,46 +263,42 @@ impl MainWindow {
         let content = dlg.content_area();
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
-        hbox.add(&gtk::Label::new(Some("Host:")));
+        hbox.append(&gtk::Label::new(Some("Host:")));
         let entry_addr = gtk::Entry::new();
         entry_addr.set_size_request(300, 0);
         entry_addr.set_text("127.0.0.1");
         entry_addr.set_activates_default(true);
-        hbox.add(&entry_addr);
+        hbox.append(&entry_addr);
 
-        hbox.add(&gtk::Label::new(Some("Port:")));
+        hbox.append(&gtk::Label::new(Some("Port:")));
         let entry_port = gtk::Entry::new();
         entry_port.set_size_request(300, 0);
         entry_port.set_text("5596");
         entry_port.set_activates_default(true);
-        hbox.add(&entry_port);
+        hbox.append(&entry_port);
 
-        content.pack_end(&hbox, false, false, 0);
-        dlg.show_all();
+        content.append(&hbox);
+        /*TODO
+        dlg.connect_response(|dialog, response| {
+            if response == gtk::ResponseType::Ok {
+                let addr = format!(
+                    "{}:{}",
+                    entry_addr.text().as_str(),
+                    entry_port.text().as_str()
+                );
 
-        let result = dlg.run();
-        let addr = format!(
-            "{}:{}",
-            entry_addr.text().as_str(),
-            entry_port.text().as_str()
-        );
+                self.draw.borrow_mut().reset_game();
 
-        if result == gtk::ResponseType::Ok {
-            self.draw.borrow_mut().reset_game();
-
-            let result = self.game.borrow_mut().client_connect(&addr);
-            if let Err(e) = result {
-                messagebox_error(Some(&dlg), &format!("Failed to connect to server:\n{}", e));
-            } else {
-                self.game_meta_view.borrow_mut().clear_player_list();
-                self.button_connect.set_sensitive(false);
-                self.button_disconnect.set_sensitive(true);
-                self.game_meta_info_grid.show();
+                let result = self.game.borrow_mut().client_connect(&addr);
+                if let Err(e) = result {
+                    messagebox_error(Some(dialog), &format!("Failed to connect to server:\n{}", e));
+                }
             }
-        }
-        dlg.close();
+            dialog.close();
+        });
+        */
 
-        self.update_status();
+        dlg.show();
     }
 
     fn disconnect_game(&mut self) {
@@ -317,7 +315,7 @@ impl MainWindow {
     }
 
     fn load_game(&mut self) {
-        let dlg = gtk::FileChooserDialog::with_buttons(
+        let dlg = gtk::FileChooserDialog::new(
             Some("Load game state"),
             Some(&self.appwindow),
             gtk::FileChooserAction::Open,
@@ -326,17 +324,23 @@ impl MainWindow {
                 ("_Open", gtk::ResponseType::Accept),
             ],
         );
-        if dlg.run() == gtk::ResponseType::Accept
-            && let Some(filename) = dlg.filename()
-            && let Err(e) = self.draw.borrow_mut().load_game(filename.as_path())
-        {
-            messagebox_error(Some(&dlg), &format!("Failed to load game:\n{}", e));
-        }
-        dlg.close();
+        /*TODO
+        dlg.connect_response(|dialog, response| {
+            if response == gtk::ResponseType::Accept {
+                if let Some(filename) = dialog.filename() {
+                    if let Err(e) = self.draw.borrow_mut().load_game(filename.as_path()) {
+                        messagebox_error(Some(dialog), &format!("Failed to load game:\n{}", e));
+                    }
+                }
+            }
+            dialog.close();
+        });
+        */
+        dlg.show();
     }
 
     fn save_game(&self) {
-        let dlg = gtk::FileChooserDialog::with_buttons(
+        let dlg = gtk::FileChooserDialog::new(
             Some("Save game state"),
             Some(&self.appwindow),
             gtk::FileChooserAction::Save,
@@ -345,6 +349,7 @@ impl MainWindow {
                 ("_Save", gtk::ResponseType::Accept),
             ],
         );
+        /*TODO
         if dlg.run() == gtk::ResponseType::Accept
             && let Some(filename) = dlg.filename()
             && let Err(e) = self.draw.borrow().save_game(filename.as_path())
@@ -352,6 +357,8 @@ impl MainWindow {
             messagebox_error(Some(&dlg), &format!("Failed to save game:\n{}", e));
         }
         dlg.close();
+        */
+        dlg.show();
     }
 
     fn gsignal_record_show(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
