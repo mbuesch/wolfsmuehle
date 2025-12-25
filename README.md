@@ -31,4 +31,20 @@ region.
   A capture move distance is exactly two grid positions.
 - Wolves cannot capture across 90 degree corners.
   But capturing across 135 degree corners is possible.
+- Multi capture: Wolves can continue capturing sheep, if after one successful capture a next capture is immediately possible.
+  The number of adjacent multi captures is not limited.
 
+## Network game
+
+Wolfsmühle can be played with multiple players over the network.
+Just click the menu item `Connect` / `Connect to server...` to connect to a game server.
+
+### Start a game server
+
+Run the application with the `--server` option to start a server.
+
+```sh
+wolfsmuehle --server
+```
+
+See `--help` for more options.
