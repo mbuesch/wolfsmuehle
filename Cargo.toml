@@ -19,7 +19,7 @@ exclude         = ["/maintenance/"]
 
 [features]
 default         = ["gui", "server"]
-gui             = ["cairo-rs", "gdk", "gdk-pixbuf", "gio", "glib", "gtk"]
+gui             = ["dep:cairo-rs", "dep:gdk", "dep:gdk-pixbuf", "dep:gio", "dep:glib", "dep:gtk"]
 server          = []
 
 [dependencies]
@@ -27,7 +27,7 @@ anyhow          = "1"
 itertools       = "0.14"
 lazy_static     = "1"
 rand            = "0.9"
-structopt       = "0.3"
+clap            = { version = "4", features = [ "derive", "wrap_help", "unicode" ] }
 
 cairo-rs        = { version = "0.16", optional = true }
 gdk             = { version = "0.16", optional = true }
@@ -36,8 +36,15 @@ gio             = { version = "0.16", optional = true }
 glib            = { version = "0.16", optional = true }
 gtk             = { version = "0.16", optional = true }
 
+[profile.dev]
+debug           = "limited"
+panic           = "abort"
+
 [profile.release]
-lto             = "thin"
+lto             = "fat"
+panic           = "abort"
+strip           = "symbols"
 overflow-checks = true
+codegen-units   = 1
 
 # vim: ts=4 sw=4 expandtab

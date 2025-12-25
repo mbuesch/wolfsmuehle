@@ -45,10 +45,10 @@ use gio::prelude::*;
 use gtk::prelude::*;
 //use std::env;
 use crate::print::Print;
-use structopt::StructOpt;
+use clap::Parser;
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "wolfsmühle")]
+/// Wolfsmühle board game.
+#[derive(Parser, Debug)]
 struct Opts {
     /// Set the log level.
     /// 0 = Silent. Don't print anything.
@@ -56,26 +56,26 @@ struct Opts {
     /// 2 = Print errors and warnings.
     /// 3 = Print errors, warnings and info.
     /// 4 = Print errors, warnings, info and debug.
-    #[structopt(short = "L", long, default_value = "3")]
+    #[arg(short = 'L', long, default_value = "3")]
     log_level: u8,
 
-    /// Run a dedicated server.
+    /// Run a dedicated server without a graphical user interface.
     #[cfg(feature = "gui")]
-    #[structopt(short, long)]
+    #[arg(short, long)]
     server: bool,
 
     /// Bind the server to this address.
     #[cfg(feature = "server")]
-    #[structopt(short = "b", long, default_value = "0.0.0.0")]
+    #[arg(short = 'b', long, default_value = "0.0.0.0")]
     server_bind: String,
 
     /// Maximum number of connections to accept in server mode.
     #[cfg(feature = "server")]
-    #[structopt(short = "M", long, default_value = "10")]
+    #[arg(short = 'M', long, default_value = "10")]
     max_connections: u16,
 
     /// Server room to open (server) or join (client).
-    #[structopt(short, long)]
+    #[arg(short, long)]
     room: Option<Vec<String>>,
 
     /// Restrict the player modes that can join a room.
@@ -83,27 +83,27 @@ struct Opts {
     /// one Sheep player can join a room.
     /// In restricted mode, the player mode "both" is not allowed.
     #[cfg(feature = "server")]
-    #[structopt(short = "R", long)]
+    #[arg(short = 'R', long)]
     restrict_player_modes: bool,
 
     /// Connect to a server.
     #[cfg(feature = "gui")]
-    #[structopt(short, long)]
+    #[arg(short, long)]
     connect: Option<String>,
 
     /// Use this port for server or client connection.
-    #[structopt(short, long, default_value = "5596")]
+    #[arg(short, long, default_value = "5596")]
     port: u16,
 
     /// Use this player name when joining a room, instead of an auto generated one.
     #[cfg(feature = "gui")]
-    #[structopt(short = "n", long)]
+    #[arg(short = 'n', long)]
     player_name: Option<String>,
 
     /// Use this player mode when joining a room.
     /// May be "wolf", "sheep", "both" or "spectator".
     #[cfg(feature = "gui")]
-    #[structopt(short = "m", long, default_value = "both")]
+    #[arg(short = 'm', long, default_value = "both")]
     player_mode: String,
 }
 
@@ -132,7 +132,7 @@ fn server_fn(opt: &Opts) -> ah::Result<()> {
 
 #[cfg(feature = "gui")]
 fn app_fn(app: &gtk::Application) {
-    let opt = Opts::from_args();
+    let opt = Opts::parse();
 
     let connect = match opt.connect {
         Some(connect) => Some(format!("{}:{}", connect, opt.port)),
@@ -167,7 +167,7 @@ fn app_fn(app: &gtk::Application) {
 }
 
 fn main() -> ah::Result<()> {
-    let opt = Opts::from_args();
+    let opt = Opts::parse();
     Print::set_level_number(opt.log_level);
 
     #[cfg(feature = "gui")]
