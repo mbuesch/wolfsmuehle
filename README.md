@@ -6,40 +6,44 @@ region.
 
 ![image](doc/wolfsmuehle.png)
 
-## Game rules
+## Game Rules
 
-### Moving rules
+### Movement
 
-- Players can move by one grid position on every turn.
-- Wolves are free to move in any direction on the grid.
+- Players can move their pieces one grid position per turn.
+- The wolves and sheep alternate turns.
+- Wolves are free to move in any direction.
 - Sheep can only move vertically upwards towards the barn, or horizontally.
-  Never downwards or diagonally.
-- Moving turns are alternating between wolves and sheep.
+  They can never move downwards or diagonally.
 
-### Sheep win, if
+### Sheep Win Condition
 
-- Nine sheep have occupied the barn at the top.
-- Or if both wolves are surrounded by sheep such as that the wolves can't move anymore.
+The sheep win if:
 
-### Wolves win, if
+- nine sheep occupy the barn at the top of the board.
+- or if both wolves are surrounded by sheep and cannot move.
 
-- Less than nine sheep are left on the board.
+### Wolf Win Condition
 
-### Capturing sheep
+The wolves win if:
 
-- A wolf can capture sheep by jumping over one, if a sheep is directly adjacent to the wolf and the jump destination position is not occupied.
-  A capture move distance is exactly two grid positions.
-- Wolves cannot capture across 90 degree corners.
-  But capturing across 135 degree corners is possible.
-- Multi capture: Wolves can continue capturing sheep, if after one successful capture a next capture is immediately possible.
-  The number of adjacent multi captures is not limited.
+- fewer than nine sheep are left on the board.
 
-## Network game
+### Capturing Sheep
+
+- A wolf can capture a sheep by jumping over it to an empty space directly behind it.
+  The sheep must be on an adjacent grid position to the wolf.
+- Wolves can only capture by jumping in a straight line (horizontally, vertically, or diagonally) or across a 135 degree corner.
+  Wolves cannot capture across 90 degree corners.
+- Multi-capture: A wolf can make multiple captures in a single turn, as long as a valid capture is possible from its new position.
+  There is no limit to the number of captures a wolf can make in a single turn.
+
+## Network Game
 
 Wolfsmühle can be played with multiple players over the network.
-Just click the menu item `Connect` / `Connect to server...` to connect to a game server.
+To play over the network, click on `Connect` and then `Connect to server...` to connect to a game server.
 
-### Start a game server
+### Starting a Game Server
 
 Run the application with the `--server` option to start a server.
 
