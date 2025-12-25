@@ -9,7 +9,6 @@ use crate::game_state::GameState;
 use crate::gtk_helpers::*;
 use crate::player::{PlayerList, PlayerMode};
 use crate::print::Print;
-use crate::{gsignal_connect_to_mut, gsigparam};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -41,7 +40,7 @@ impl GameMetaView {
             let column = gtk::TreeViewColumn::new();
             let cell = gtk::CellRendererText::new();
             CellLayoutExt::pack_start(&column, &cell, true);
-            TreeViewColumnExt::add_attribute(&column, &cell, "text", i);
+            column.add_attribute(&cell, "text", i);
             column.set_title(["Room name", "joined"][i as usize]);
             room_tree_view.append_column(&column);
         }
@@ -53,7 +52,7 @@ impl GameMetaView {
             let column = gtk::TreeViewColumn::new();
             let cell = gtk::CellRendererText::new();
             CellLayoutExt::pack_start(&column, &cell, true);
-            TreeViewColumnExt::add_attribute(&column, &cell, "text", i);
+            column.add_attribute(&cell, "text", i);
             column.set_title(["Player name", "Mode", "is me"][i as usize]);
             player_tree_view.append_column(&column);
         }
@@ -76,6 +75,92 @@ impl GameMetaView {
             chat_text,
             chat_say_entry,
         }
+    }
+
+    pub fn connect_signals(gmv: &Rc<RefCell<GameMetaView>>) {
+        // Room tree row-activated signal.
+        // We need to get the tree view from the model. Since the tree view
+        // is not stored, we get it via the builder in main_window. Instead,
+        // we can store the room_tree in the struct. But for now, let's
+        // connect it here via the parent approach — actually the simplest
+        // way is to just get the tree view widget. Let's find it by
+        // navigating the widget tree from the model.
+        // Actually, the cleanest approach: store room_tree in the struct
+        // or pass it from outside. For now, let's store it externally
+        // and have main_window pass it.
+
+        // We need to connect these signals:
+        // 1. room_tree row-activated -> handle_join_room_req
+        // 2. player_name_entry changed -> playername_changed
+        // 3. player_name_entry activate -> playername_editdone
+        // 4. player_name_entry focus-leave -> playername_editdone
+        // 5. player_mode_combo changed -> playermode_changed
+        // 6. chat_say_entry activate -> handle_chat_say
+
+        // Since the widgets are stored in the struct, we connect them here.
+        // We need to clone out the widgets before borrowing mutably.
+        let player_name_entry;
+        let player_mode_combo;
+        let chat_say_entry;
+        {
+            let gmv_ref = gmv.borrow();
+            player_name_entry = gmv_ref.player_name_entry.clone();
+            player_mode_combo = gmv_ref.player_mode_combo.clone();
+            chat_say_entry = gmv_ref.chat_say_entry.clone();
+        }
+
+        // player_name_entry "changed" signal
+        let gmv2 = Rc::clone(gmv);
+        player_name_entry.connect_changed(move |_| {
+            if let Ok(mut g) = gmv2.try_borrow_mut() {
+                g.playername_changed();
+            }
+        });
+
+        // player_name_entry "activate" signal (Enter key)
+        let gmv2 = Rc::clone(gmv);
+        player_name_entry.connect_activate(move |_| {
+            if let Ok(mut g) = gmv2.try_borrow_mut() {
+                g.playername_editdone();
+            }
+        });
+
+        // player_name_entry focus-leave via EventControllerFocus
+        let focus_controller = gtk::EventControllerFocus::new();
+        let gmv2 = Rc::clone(gmv);
+        focus_controller.connect_leave(move |_| {
+            if let Ok(mut g) = gmv2.try_borrow_mut() {
+                g.playername_editdone();
+            }
+        });
+        player_name_entry.add_controller(focus_controller);
+
+        // player_mode_combo "changed" signal
+        let gmv2 = Rc::clone(gmv);
+        player_mode_combo.connect_changed(move |_| {
+            if let Ok(g) = gmv2.try_borrow() {
+                g.playermode_changed();
+            }
+        });
+
+        // chat_say_entry "activate" signal
+        let gmv2 = Rc::clone(gmv);
+        chat_say_entry.connect_activate(move |_| {
+            if let Ok(mut g) = gmv2.try_borrow_mut() {
+                g.handle_chat_say();
+            }
+        });
+    }
+
+    /// Connect the room tree view's row-activated signal.
+    /// This is called separately because the tree view is obtained from the builder.
+    pub fn connect_room_tree_signal(gmv: &Rc<RefCell<GameMetaView>>, room_tree: &gtk::TreeView) {
+        let gmv2 = Rc::clone(gmv);
+        room_tree.connect_row_activated(move |_tree_view, path, _column| {
+            if let Ok(mut g) = gmv2.try_borrow_mut() {
+                g.handle_join_room_req(path);
+            }
+        });
     }
 
     fn do_update_player_list(&mut self, player_list: &PlayerList) {
@@ -229,34 +314,28 @@ impl GameMetaView {
     }
 
     pub fn clear_chat_messages(&mut self) {
-        if let Some(buffer) = self.chat_text.buffer() {
-            buffer.set_text("");
-        }
+        let buffer = self.chat_text.buffer();
+        buffer.set_text("");
     }
 
     pub fn add_chat_messages(&mut self, messages: &Vec<String>) {
-        if let Some(buffer) = self.chat_text.buffer() {
-            let parent = self.chat_text.parent().unwrap();
-            let scroll = parent.downcast_ref::<gtk::ScrolledWindow>().unwrap();
+        let buffer = self.chat_text.buffer();
+        let parent = self.chat_text.parent().unwrap();
+        let scroll = parent.downcast_ref::<gtk::ScrolledWindow>().unwrap();
 
-            // Add all messages to the text view
-            let start = buffer.start_iter();
-            let end = buffer.end_iter();
-            let mut text = buffer
-                .text(&start, &end, true)
-                .unwrap()
-                .as_str()
-                .to_string();
-            for m in messages {
-                text.push_str(&format!("{}\n", m));
-            }
-            buffer.set_text(&text);
-
-            // Scroll to the bottom.
-            let adj = scroll.vadjustment();
-            adj.set_value(adj.upper());
-            scroll.set_vadjustment(Some(&adj));
+        // Add all messages to the text view
+        let start = buffer.start_iter();
+        let end = buffer.end_iter();
+        let mut text = buffer.text(&start, &end, true).as_str().to_string();
+        for m in messages {
+            text.push_str(&format!("{}\n", m));
         }
+        buffer.set_text(&text);
+
+        // Scroll to the bottom.
+        let adj = scroll.vadjustment();
+        adj.set_value(adj.upper());
+        scroll.set_vadjustment(Some(&adj));
     }
 
     fn handle_chat_say(&mut self) {
@@ -272,79 +351,6 @@ impl GameMetaView {
             } else {
                 self.chat_say_entry.set_text("");
             }
-        }
-    }
-
-    fn gsignal_playername_changed(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
-        self.playername_changed();
-        None
-    }
-
-    fn gsignal_playername_editdone(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
-        self.playername_editdone();
-        None
-    }
-
-    fn gsignal_playername_focusout(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
-        self.playername_editdone();
-        Some(false.to_value())
-    }
-
-    fn gsignal_playermode_changed(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
-        self.playermode_changed();
-        None
-    }
-
-    fn gsignal_roomtree_rowactivated(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _tree_view = gsigparam!(param[0], gtk::TreeView);
-        let path = gsigparam!(param[1], gtk::TreePath);
-        let _column = gsigparam!(param[2], gtk::TreeViewColumn);
-        self.handle_join_room_req(&path);
-        None
-    }
-
-    fn gsignal_chat_say(&mut self, _param: &[glib::Value]) -> Option<glib::Value> {
-        self.handle_chat_say();
-        None
-    }
-
-    pub fn connect_signals(
-        _self: Rc<RefCell<GameMetaView>>,
-        handler_name: &str,
-    ) -> Option<GSigHandler> {
-        match handler_name {
-            "handler_playername_changed" => Some(gsignal_connect_to_mut!(
-                _self,
-                gsignal_playername_changed,
-                None
-            )),
-            "handler_playername_activate" => Some(gsignal_connect_to_mut!(
-                _self,
-                gsignal_playername_editdone,
-                None
-            )),
-            "handler_playername_editdone" => Some(gsignal_connect_to_mut!(
-                _self,
-                gsignal_playername_editdone,
-                None
-            )),
-            "handler_playername_focusout" => Some(gsignal_connect_to_mut!(
-                _self,
-                gsignal_playername_focusout,
-                Some(false.to_value())
-            )),
-            "handler_playermode_changed" => Some(gsignal_connect_to_mut!(
-                _self,
-                gsignal_playermode_changed,
-                None
-            )),
-            "handler_roomtree_rowactivated" => Some(gsignal_connect_to_mut!(
-                _self,
-                gsignal_roomtree_rowactivated,
-                None
-            )),
-            "handler_chat_say" => Some(gsignal_connect_to_mut!(_self, gsignal_chat_say, None)),
-            _ => None,
         }
     }
 }

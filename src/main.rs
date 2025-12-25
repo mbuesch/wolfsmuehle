@@ -22,18 +22,15 @@ mod print;
 mod random;
 
 #[cfg(feature = "gui")]
+use crate::gtk_helpers::*;
+#[cfg(feature = "gui")]
 use crate::main_window::MainWindow;
 #[cfg(feature = "server")]
 use crate::net::server::Server;
 #[cfg(feature = "gui")]
 use crate::player::PlayerMode;
-use anyhow as ah;
-#[cfg(feature = "gui")]
-use gio::prelude::*;
-#[cfg(feature = "gui")]
-use gtk::prelude::*;
-//use std::env;
 use crate::print::Print;
+use anyhow as ah;
 use clap::Parser;
 
 /// Wolfsmühle board game.
@@ -172,7 +169,7 @@ fn main() -> ah::Result<()> {
 
     #[cfg(feature = "gui")]
     if !run_server {
-        let app = gtk::Application::new(None, gio::ApplicationFlags::FLAGS_NONE);
+        let app = gtk::Application::new(None::<&str>, gio::ApplicationFlags::FLAGS_NONE);
         app.connect_activate(app_fn);
         app.run();
     }

@@ -11,7 +11,6 @@ use crate::coord::{Coord, CoordAxis};
 use crate::game_state::{FieldState, GameState, MoveState, WinState};
 use crate::gtk_helpers::*;
 use crate::print::Print;
-use crate::{gsignal_connect_to, gsignal_connect_to_mut, gsigparam};
 use anyhow as ah;
 use std::cell::RefCell;
 use std::path::Path;
@@ -92,14 +91,6 @@ pub struct DrawingArea {
 
 impl DrawingArea {
     pub fn new(widget: gtk::DrawingArea, game: Rc<RefCell<GameState>>) -> ah::Result<DrawingArea> {
-        widget.add_events(
-            gdk::EventMask::POINTER_MOTION_MASK
-                | gdk::EventMask::POINTER_MOTION_HINT_MASK
-                | gdk::EventMask::BUTTON_MOTION_MASK
-                | gdk::EventMask::BUTTON_PRESS_MASK
-                | gdk::EventMask::BUTTON_RELEASE_MASK,
-        );
-
         let wolf_xpm = conv_xpm(include_str!("wolf.xpm"))?;
         let sheep_xpm = conv_xpm(include_str!("sheep.xpm"))?;
 
@@ -133,6 +124,47 @@ impl DrawingArea {
         })
     }
 
+    pub fn connect_signals(draw: &Rc<RefCell<DrawingArea>>) {
+        let widget = draw.borrow().widget.clone();
+
+        // Set the draw function.
+        let draw2 = Rc::clone(draw);
+        widget.set_draw_func(move |_widget, cairo, _width, _height| {
+            if let Ok(d) = draw2.try_borrow() {
+                d.draw(cairo);
+            }
+        });
+
+        // Motion events via EventControllerMotion.
+        let motion_controller = gtk::EventControllerMotion::new();
+        let draw2 = Rc::clone(draw);
+        motion_controller.connect_motion(move |_, x, y| {
+            if let Ok(mut d) = draw2.try_borrow_mut() {
+                d.mousemove(x, y);
+            }
+        });
+        widget.add_controller(motion_controller);
+
+        // Click events via GestureClick.
+        let click_controller = gtk::GestureClick::new();
+        click_controller.set_button(0); // Listen to all buttons.
+        let draw2 = Rc::clone(draw);
+        click_controller.connect_pressed(move |gesture, _n_press, x, y| {
+            let button = gesture.current_button();
+            if let Ok(mut d) = draw2.try_borrow_mut() {
+                d.mousebutton(x, y, button, true);
+            }
+        });
+        let draw2 = Rc::clone(draw);
+        click_controller.connect_released(move |gesture, _n_press, x, y| {
+            let button = gesture.current_button();
+            if let Ok(mut d) = draw2.try_borrow_mut() {
+                d.mousebutton(x, y, button, false);
+            }
+        });
+        widget.add_controller(click_controller);
+    }
+
     pub fn redraw(&self) {
         self.widget.queue_draw();
     }
@@ -151,15 +183,15 @@ impl DrawingArea {
         cairo.rectangle(
             0.0,
             0.0,
-            self.widget.allocated_width() as f64,
-            self.widget.allocated_height() as f64,
+            self.widget.width() as f64,
+            self.widget.height() as f64,
         );
         cairo.fill().ok();
 
         // Draw sky.
         cairo.set_source_rgb(0.0, 0.49, 0.69);
         let pos = pos2pix(&coord!(0, 2));
-        cairo.rectangle(0.0, 0.0, self.widget.allocated_width() as f64, pos.1);
+        cairo.rectangle(0.0, 0.0, self.widget.width() as f64, pos.1);
         cairo.fill().ok();
 
         // Draw barn.
@@ -256,7 +288,7 @@ impl DrawingArea {
         // Draw the captured tokens.
         let stats = game.get_stats();
         let mut y = 25.0;
-        let x = self.widget.allocated_width() as f64 - 35.0;
+        let x = self.widget.width() as f64 - 35.0;
         for _ in 0..stats.sheep_captured {
             self.draw_token_sheep_pix(cairo, (x, y), false);
             y += 20.0;
@@ -279,22 +311,22 @@ impl DrawingArea {
             let text = format!("{} won!", win_state);
             if let Ok(extents) = cairo.text_extents(&text) {
                 cairo.move_to(
-                    (self.widget.allocated_width() as f64 / 2.0) - (extents.width() / 2.0),
-                    (self.widget.allocated_height() as f64 / 2.0) + (extents.height() / 2.0),
+                    (self.widget.width() as f64 / 2.0) - (extents.width() / 2.0),
+                    (self.widget.height() as f64 / 2.0) + (extents.height() / 2.0),
                 );
                 cairo.show_text(&text).ok();
             }
         }
     }
 
-    fn draw(&self, cairo: cairo::Context) {
+    fn draw(&self, cairo: &cairo::Context) {
         if DRAW_DEBUG {
             Print::debug("Redrawing board.");
         }
-        self.draw_background(&cairo);
-        self.draw_board_lines(&cairo);
-        self.draw_tokens(&cairo);
-        self.draw_game_state(&cairo);
+        self.draw_background(cairo);
+        self.draw_board_lines(cairo);
+        self.draw_tokens(cairo);
+        self.draw_game_state(cairo);
     }
 
     fn update_moving_token(&mut self, move_state: MoveState, x: f64, y: f64) {
@@ -373,66 +405,6 @@ impl DrawingArea {
 
     pub fn save_game(&self, filename: &Path) -> ah::Result<()> {
         self.game.borrow().save_game(filename)
-    }
-
-    fn gsignal_draw(&self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _widget = gsigparam!(param[0], gtk::DrawingArea);
-        let cairo = gsigparam!(param[1], cairo::Context);
-        self.draw(cairo);
-        Some(false.to_value())
-    }
-
-    fn gsignal_motionnotify(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _widget = gsigparam!(param[0], gtk::DrawingArea);
-        let event = gsigparam!(param[1], gdk::Event);
-        let (x, y) = event.coords().unwrap();
-        self.mousemove(x, y);
-        Some(false.to_value())
-    }
-
-    fn gsignal_buttonpress(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _widget = gsigparam!(param[0], gtk::DrawingArea);
-        let event = gsigparam!(param[1], gdk::Event);
-        let (x, y) = event.coords().unwrap();
-        self.mousebutton(x, y, event.button().unwrap(), true);
-        Some(false.to_value())
-    }
-
-    fn gsignal_buttonrelease(&mut self, param: &[glib::Value]) -> Option<glib::Value> {
-        let _widget = gsigparam!(param[0], gtk::DrawingArea);
-        let event = gsigparam!(param[1], gdk::Event);
-        let (x, y) = event.coords().unwrap();
-        self.mousebutton(x, y, event.button().unwrap(), false);
-        Some(false.to_value())
-    }
-
-    pub fn connect_signals(
-        draw: Rc<RefCell<DrawingArea>>,
-        handler_name: &str,
-    ) -> Option<GSigHandler> {
-        match handler_name {
-            "handler_drawingarea_draw" => Some(gsignal_connect_to!(
-                draw,
-                gsignal_draw,
-                Some(false.to_value())
-            )),
-            "handler_drawingarea_motionnotify" => Some(gsignal_connect_to_mut!(
-                draw,
-                gsignal_motionnotify,
-                Some(false.to_value())
-            )),
-            "handler_drawingarea_buttonpress" => Some(gsignal_connect_to_mut!(
-                draw,
-                gsignal_buttonpress,
-                Some(false.to_value())
-            )),
-            "handler_drawingarea_buttonrelease" => Some(gsignal_connect_to_mut!(
-                draw,
-                gsignal_buttonrelease,
-                Some(false.to_value())
-            )),
-            _ => None,
-        }
     }
 }
 

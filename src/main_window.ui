@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <object class="GtkApplicationWindow" id="mainwindow">
+    <property name="show-menubar">False</property>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <!-- Header bar with menu buttons -->
+          <object class="GtkBox">
+            <property name="orientation">horizontal</property>
+            <property name="spacing">4</property>
+            <child>
+              <object class="GtkMenuButton" id="game_menu_button">
+                <property name="label" translatable="yes">_Game</property>
+                <property name="use-underline">True</property>
+                <property name="menu-model">game_menu</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuButton" id="connect_menu_button">
+                <property name="label" translatable="yes">_Connect</property>
+                <property name="use-underline">True</property>
+                <property name="menu-model">connect_menu</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuButton" id="recorder_menu_button">
+                <property name="label" translatable="yes">_Recorder</property>
+                <property name="use-underline">True</property>
+                <property name="menu-model">recorder_menu</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuButton" id="help_menu_button">
+                <property name="label" translatable="yes">_Help</property>
+                <property name="use-underline">True</property>
+                <property name="menu-model">help_menu</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="orientation">horizontal</property>
+            <child>
+              <object class="GtkDrawingArea" id="drawing_area">
+                <property name="width-request">500</property>
+                <property name="height-request">700</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+              </object>
+            </child>
+            <child>
+              <!-- n-columns=2 n-rows=5 -->
+              <object class="GtkGrid" id="game_meta_info_grid">
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Server room list:
+(double-click to join)</property>
+                    <property name="justify">center</property>
+                    <layout>
+                      <property name="column">0</property>
+                      <property name="row">0</property>
+                    </layout>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkScrolledWindow">
+                    <property name="vexpand">True</property>
+                    <child>
+                      <object class="GtkTreeView" id="room_tree">
+                        <property name="vexpand">True</property>
+                        <property name="enable-grid-lines">both</property>
+                      </object>
+                    </child>
+                    <layout>
+                      <property name="column">0</property>
+                      <property name="row">1</property>
+                    </layout>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Players in room:</property>
+                    <property name="justify">center</property>
+                    <layout>
+                      <property name="column">0</property>
+                      <property name="row">2</property>
+                    </layout>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkScrolledWindow">
+                    <property name="vexpand">True</property>
+                    <child>
+                      <object class="GtkTreeView" id="player_tree">
+                        <property name="vexpand">True</property>
+                        <property name="enable-grid-lines">both</property>
+                      </object>
+                    </child>
+                    <layout>
+                      <property name="column">0</property>
+                      <property name="row">3</property>
+                    </layout>
+                  </object>
+                </child>
+                <child>
+                  <!-- n-columns=2 n-rows=2 -->
+                  <object class="GtkGrid">
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">My name: </property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">0</property>
+                        </layout>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkEntry" id="player_name_entry">
+                        <property name="max-length">64</property>
+                        <property name="input-purpose">name</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">0</property>
+                        </layout>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">My mode:</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">1</property>
+                        </layout>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkComboBoxText" id="player_mode_combo">
+                        <property name="active">0</property>
+                        <items>
+                          <item id="spectator" translatable="yes">Spectator</item>
+                          <item id="wolf" translatable="yes">Wolf</item>
+                          <item id="sheep" translatable="yes">Sheep</item>
+                          <item id="both" translatable="yes">Wolf and sheep</item>
+                        </items>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">1</property>
+                        </layout>
+                      </object>
+                    </child>
+                    <layout>
+                      <property name="column">0</property>
+                      <property name="row">4</property>
+                    </layout>
+                  </object>
+                </child>
+                <child>
+                  <!-- n-columns=1 n-rows=3 -->
+                  <object class="GtkGrid">
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="width-request">450</property>
+                        <property name="label" translatable="yes">Chat:</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">0</property>
+                        </layout>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="vexpand">True</property>
+                        <child>
+                          <object class="GtkTextView" id="chat_text_view">
+                            <property name="vexpand">True</property>
+                            <property name="editable">False</property>
+                          </object>
+                        </child>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">1</property>
+                        </layout>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkEntry" id="chat_say_entry">
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">2</property>
+                        </layout>
+                      </object>
+                    </child>
+                    <layout>
+                      <property name="column">1</property>
+                      <property name="row">0</property>
+                      <property name="row-span">5</property>
+                    </layout>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="status_label">
+            <property name="halign">end</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+  <menu id="game_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Reset game</attribute>
+        <attribute name="action">win.resetgame</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Load game state...</attribute>
+        <attribute name="action">win.loadgame</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Save game state...</attribute>
+        <attribute name="action">win.savegame</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Quit</attribute>
+        <attribute name="action">win.quit</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="connect_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Connect to server...</attribute>
+        <attribute name="action">win.connect</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Disconnect</attribute>
+        <attribute name="action">win.disconnect</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="recorder_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Show recorded game...</attribute>
+        <attribute name="action">win.record_show</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="help_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">About</attribute>
+        <attribute name="action">win.about</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>
