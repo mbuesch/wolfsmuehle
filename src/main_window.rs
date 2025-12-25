@@ -88,9 +88,9 @@ impl MainWindow {
         // Create game state.
         let game = Rc::new(RefCell::new(GameState::new(player_mode,
                                                        player_name)?));
-        if connect_to_server.is_some() {
+        if let Some(connect_to_server) = &connect_to_server {
             let mut game = game.borrow_mut();
-            game.client_connect(&connect_to_server.unwrap())?;
+            game.client_connect(connect_to_server)?;
             game.client_join_room(&room_name)?;
             game_meta_info_grid.show();
         } else {
@@ -147,13 +147,11 @@ impl MainWindow {
             let mainwnd2 = Rc::clone(&mainwnd2);
             let game_meta_view2 = Rc::clone(&game_meta_view2);
 
-            match DrawingArea::connect_signals(Rc::clone(&draw2), handler_name) {
-                Some(handler) => return handler,
-                None => (),
+            if let Some(handler) = DrawingArea::connect_signals(Rc::clone(&draw2), handler_name) {
+                return handler;
             }
-            match GameMetaView::connect_signals(Rc::clone(&game_meta_view2), handler_name) {
-                Some(handler) => return handler,
-                None => (),
+            if let Some(handler) = GameMetaView::connect_signals(Rc::clone(&game_meta_view2), handler_name) {
+                return handler;
             }
 
             match handler_name {
@@ -185,58 +183,57 @@ impl MainWindow {
         Ok(mainwnd)
     }
 
+    #[allow(clippy::collapsible_if)]
+    #[allow(clippy::collapsible_else_if)]
     fn poll_timer(&mut self) {
-        if let Ok(mut draw) = self.draw.try_borrow_mut() {
-            if let Ok(mut game_meta_view) = self.game_meta_view.try_borrow_mut() {
+        if let Ok(mut draw) = self.draw.try_borrow_mut() && let Ok(mut game_meta_view) = self.game_meta_view.try_borrow_mut() {
+            let redraw;
+            let player_list;
+            let room_list;
+            let chat_messages;
+            let is_joined_room;
+            let is_connected;
+            if let Ok(mut game) = self.game.try_borrow_mut() {
+                redraw = game.poll_server();
+                player_list = Some(game.get_room_player_list().clone());
+                room_list = Some(game.get_room_list().clone());
+                chat_messages = Some(game.client_get_chat_messages());
+                is_joined_room = game.client_get_joined_room().is_some();
+                is_connected = Some(game.client_is_connected());
+            } else {
+                redraw = false;
+                player_list = None;
+                room_list = None;
+                chat_messages = None;
+                is_joined_room = false;
+                is_connected = None;
+            }
 
-                let redraw;
-                let player_list;
-                let room_list;
-                let chat_messages;
-                let is_joined_room;
-                let is_connected;
-                if let Ok(mut game) = self.game.try_borrow_mut() {
-                    redraw = game.poll_server();
-                    player_list = Some(game.get_room_player_list().clone());
-                    room_list = Some(game.get_room_list().clone());
-                    chat_messages = Some(game.client_get_chat_messages());
-                    is_joined_room = game.client_get_joined_room().is_some();
-                    is_connected = Some(game.client_is_connected());
+            if let Some(player_list) = player_list {
+                if !is_joined_room {
+                    game_meta_view.clear_player_list();
                 } else {
-                    redraw = false;
-                    player_list = None;
-                    room_list = None;
-                    chat_messages = None;
-                    is_joined_room = false;
-                    is_connected = None;
+                    game_meta_view.update_player_list(&player_list);
                 }
-
-                if let Some(player_list) = player_list {
-                    if !is_joined_room {
-                        game_meta_view.clear_player_list();
-                    } else {
-                        game_meta_view.update_player_list(&player_list);
+            }
+            if let Some(room_list) = room_list {
+                game_meta_view.update_room_list(&room_list);
+            }
+            if is_joined_room {
+                if let Some(chat_messages) = chat_messages {
+                    if !chat_messages.is_empty() {
+                        game_meta_view.add_chat_messages(&chat_messages);
                     }
                 }
-                if let Some(room_list) = room_list {
-                    game_meta_view.update_room_list(&room_list);
-                }
-                if is_joined_room {
-                    if let Some(chat_messages) = chat_messages {
-                        if !chat_messages.is_empty() {
-                            game_meta_view.add_chat_messages(&chat_messages);
-                        }
-                    }
-                } else {
-                    game_meta_view.clear_chat_messages();
-                }
-                if let Some(is_connected) = is_connected {
-                    let pending_join = is_connected && !is_joined_room;
-                    draw.set_pending_join(pending_join);
-                }
-                if redraw {
-                    draw.redraw();
-                }
+            } else {
+                game_meta_view.clear_chat_messages();
+            }
+            if let Some(is_connected) = is_connected {
+                let pending_join = is_connected && !is_joined_room;
+                draw.set_pending_join(pending_join);
+            }
+            if redraw {
+                draw.redraw();
             }
         }
         self.update_status();
@@ -347,20 +344,14 @@ impl MainWindow {
     }
 
     fn load_game(&mut self) {
-        let mut err = None;
         let dlg = gtk::FileChooserDialog::with_buttons(
             Some("Load game state"),
             Some(&self.appwindow),
             gtk::FileChooserAction::Open,
             &[("_Cancel", gtk::ResponseType::Cancel), ("_Open", gtk::ResponseType::Accept)]);
-        if dlg.run() == gtk::ResponseType::Accept {
-            if let Some(filename) = dlg.filename() {
-                if let Err(e) = self.draw.borrow_mut().load_game(filename.as_path()) {
-                    err = Some(e);
-                }
-            }
-        }
-        if let Some(e) = err {
+        if dlg.run() == gtk::ResponseType::Accept &&
+           let Some(filename) = dlg.filename() &&
+           let Err(e) = self.draw.borrow_mut().load_game(filename.as_path()) {
             messagebox_error(Some(&dlg),
                              &format!("Failed to load game:\n{}", e));
         }
@@ -368,20 +359,14 @@ impl MainWindow {
     }
 
     fn save_game(&self) {
-        let mut err = None;
         let dlg = gtk::FileChooserDialog::with_buttons(
             Some("Save game state"),
             Some(&self.appwindow),
             gtk::FileChooserAction::Save,
             &[("_Cancel", gtk::ResponseType::Cancel), ("_Save", gtk::ResponseType::Accept)]);
-        if dlg.run() == gtk::ResponseType::Accept {
-            if let Some(filename) = dlg.filename() {
-                if let Err(e) = self.draw.borrow().save_game(filename.as_path()) {
-                    err = Some(e);
-                }
-            }
-        }
-        if let Some(e) = err {
+        if dlg.run() == gtk::ResponseType::Accept &&
+           let Some(filename) = dlg.filename() &&
+           let Err(e) = self.draw.borrow().save_game(filename.as_path()) {
             messagebox_error(Some(&dlg),
                              &format!("Failed to save game:\n{}", e));
         }

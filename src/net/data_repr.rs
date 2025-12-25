@@ -52,21 +52,21 @@ impl FromNet32 for u32 {
         if data.len() >= 4 {
             Ok(u32::from_be_bytes(data[0..4].try_into()?))
         } else {
-            return Err(ah::format_err!("from_net u32: Not enough data."))
+            Err(ah::format_err!("from_net u32: Not enough data."))
         }
     }
 }
 
 impl ToNetStr for str {
     fn to_net(&self, bytes: &mut [u8], truncate: bool) -> ah::Result<usize> {
-        let mut len = self.as_bytes().len();
+        let mut len = self.len();
         if len > bytes.len() {
             if !truncate {
                 return Err(ah::format_err!("to_net str: String is too long."));
             }
             len = bytes.len()
         }
-        bytes[0..len].copy_from_slice(&self.as_bytes());
+        bytes[0..len].copy_from_slice(self.as_bytes());
         Ok(len)
     }
 }

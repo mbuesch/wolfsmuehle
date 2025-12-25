@@ -149,7 +149,7 @@ impl<'a> ServerInstance<'a> {
         if DEBUG_RAW {
             Print::debug(&format!("Server TX: {:?}", data));
         }
-        self.stream.write(data)?;
+        self.stream.write_all(data)?;
         Ok(())
     }
 
@@ -223,7 +223,7 @@ impl<'a> ServerInstance<'a> {
         for (i, room_name) in room_names.iter().enumerate() {
             messages.push(MsgRoomList::new(room_names.len() as u32,
                                            i as u32,
-                                           &room_name)?);
+                                           room_name)?);
         }
         Ok(messages)
     }
@@ -237,7 +237,7 @@ impl<'a> ServerInstance<'a> {
         } else {
             return Err(ah::format_err!("Not in a room."));
         };
-        let mut room = if let Some(room) = room {
+        let room = if let Some(room) = room {
             room
         } else {
             return Err(ah::format_err!("Room '{}' not found.",
@@ -247,7 +247,7 @@ impl<'a> ServerInstance<'a> {
         match msg_type {
             MsgType::Reset(msg) => {
                 room.get_game_state(self.player_mode).reset_game(false);
-                self.broadcast_game_state(&mut room);
+                self.broadcast_game_state(room);
                 drop(rooms);
                 self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
             },
@@ -261,7 +261,7 @@ impl<'a> ServerInstance<'a> {
                     Ok(_) => None,
                     Err(e) => Some(format!("{}", e)),
                 };
-                self.broadcast_game_state(&mut room);
+                self.broadcast_game_state(room);
                 drop(rooms);
                 if let Some(e) = err {
                     self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_NOK, &e)?)?;
@@ -296,9 +296,9 @@ impl<'a> ServerInstance<'a> {
                                                   "MsgRecord not supported.")?)?;
             },
             MsgType::Move(msg) => {
-                match room.get_game_state(self.player_mode).server_handle_rx_msg_move(&msg) {
+                match room.get_game_state(self.player_mode).server_handle_rx_msg_move(msg) {
                     Ok(_) => {
-                        self.broadcast_game_state(&mut room);
+                        self.broadcast_game_state(room);
                         drop(rooms);
                         self.send_msg(&mut MsgResult::new(*msg, MSG_RESULT_OK, "")?)?;
                     },
@@ -343,13 +343,11 @@ impl<'a> ServerInstance<'a> {
         match rooms.get(room_name) {
             Some(room) => {
                 let mut ignore_player = None;
-                if let Some(joined_room) = self.joined_room.as_ref() {
-                    if joined_room == room_name {
-                        // We're about to re-join this room with a different
-                        // name or mode. Ignore the old name during checks.
-                        if let Some(old_player_name) = self.player_name.as_ref() {
-                            ignore_player = Some(&old_player_name[..]);
-                        }
+                if let Some(joined_room) = self.joined_room.as_ref() && joined_room == room_name {
+                    // We're about to re-join this room with a different
+                    // name or mode. Ignore the old name during checks.
+                    if let Some(old_player_name) = self.player_name.as_ref() {
+                        ignore_player = Some(&old_player_name[..]);
                     }
                 }
 
@@ -373,7 +371,7 @@ impl<'a> ServerInstance<'a> {
 
         // Join the new room.
         match rooms.get_mut(room_name) {
-            Some(mut room) => {
+            Some(room) => {
                 // Add player to room.
                 match room.add_player(player_name, player_mode) {
                     Ok(_) => {
@@ -385,7 +383,7 @@ impl<'a> ServerInstance<'a> {
                                              player_name,
                                              self.player_mode,
                                              room.get_name()));
-                        if let Err(e) = self.broadcast_player_list(&mut room, true) {
+                        if let Err(e) = self.broadcast_player_list(room, true) {
                             Print::error(&format!("Failed to broadcast player list: {}", e));
                         }
                     },
@@ -537,11 +535,9 @@ impl<'a> ServerInstance<'a> {
                 // We're not in the destination room. Discard it.
                 return Ok(());
             }
-        } else {
-            if !pack.meta_data.is_empty() {
-                // We're not in the destination room. Discard it.
-                return Ok(());
-            }
+        } else if !pack.meta_data.is_empty() {
+            // We're not in the destination room. Discard it.
+            return Ok(());
         }
 
         if DEBUG_RAW {
@@ -607,7 +603,7 @@ impl<'a> ServerInstance<'a> {
                     }
 
                     // Process all received data.
-                    while buffer.len() > 0 {
+                    while !buffer.is_empty() {
                         match self.handle_rx_data(&buffer) {
                             Ok(Some(consumed_len)) => {
                                 buffer = buffer_skip(buffer, consumed_len);
@@ -636,13 +632,9 @@ impl<'a> ServerInstance<'a> {
             }
 
             // Check if we received a multicast from other instances.
-            loop {
-                if let Some(pack) = self.mc_sub.receive() {
-                    if let Err(e) = self.handle_rx_multicast_data(&pack) {
-                        Print::error(&format!("Server multicast error: {}", e));
-                    }
-                } else {
-                    break;
+            while let Some(pack) = self.mc_sub.receive() {
+                if let Err(e) = self.handle_rx_multicast_data(&pack) {
+                    Print::error(&format!("Server multicast error: {}", e));
                 }
             }
         }

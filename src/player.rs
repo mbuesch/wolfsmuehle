@@ -97,6 +97,7 @@ impl Player {
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for Player {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.name.partial_cmp(&other.name)
@@ -137,12 +138,7 @@ impl PlayerList {
     }
 
     pub fn find_player_by_name(&self, name: &str) -> Option<&Player> {
-        for player in &self.players {
-            if player.name == name {
-                return Some(player);
-            }
-        }
-        None
+        self.players.iter().find(|player| player.name == name)
     }
 
     pub fn find_players_by_mode(&self, mode: PlayerMode) -> Vec<Player> {

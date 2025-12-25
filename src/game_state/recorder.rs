@@ -74,7 +74,7 @@ impl RecordedMove {
         let mut offset = 0;
 
         // Moving token ID.
-        if chars[offset..].len() < 1 {
+        if chars[offset..].is_empty() {
             return Err(ah::format_err!("Recorder log: No token ID."));
         }
         let move_state_type = match chars[offset] {
@@ -95,7 +95,7 @@ impl RecordedMove {
         offset += 2;
 
         // Move type.
-        if chars[offset..].len() < 1 {
+        if chars[offset..].is_empty() {
             return Err(ah::format_err!("Recorder log: No move type."));
         }
         let (win_state, captured) = match chars[offset] {

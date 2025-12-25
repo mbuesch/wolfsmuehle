@@ -168,10 +168,8 @@ impl GameMetaView {
             {
                 let mut game = self.game.borrow_mut();
 
-                if let Some(joined_room) = game.client_get_joined_room() {
-                    if joined_room == room_name {
-                        return;
-                    }
+                if let Some(joined_room) = game.client_get_joined_room() && joined_room == room_name {
+                    return;
                 }
 
                 let result = game.client_join_room(room_name);

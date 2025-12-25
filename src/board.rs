@@ -75,22 +75,18 @@ pub fn coord_is_on_board(pos: Coord) -> bool {
 
 /// Check if a position is on the main diagonal lines.
 pub fn is_on_main_diag(pos: Coord) -> bool {
-    let mut x = 0;
     let mut y = 2;
-    for _ in 0..5 {
+    for x in 0..5 {
         if pos == coord!(x, y) {
             return true;
         }
-        x += 1;
         y += 1;
     }
-    let mut x = 0;
     let mut y = 6;
-    for _ in 0..5 {
+    for x in 0..5 {
         if pos == coord!(x, y) {
             return true;
         }
-        x += 1;
         y -= 1;
     }
     false
@@ -156,11 +152,7 @@ impl Iterator for BoardPosIterator {
     type Item = (Coord, PosType);
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.iter.next() {
-            Some(coord) =>
-                Some((coord, BOARD_POSITIONS[coord.y as usize][coord.x as usize])),
-            None => None,
-        }
+        self.iter.next().map(|coord| (coord, BOARD_POSITIONS[coord.y as usize][coord.x as usize]))
     }
 }
 

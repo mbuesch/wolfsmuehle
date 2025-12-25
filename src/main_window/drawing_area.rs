@@ -119,10 +119,10 @@ impl DrawingArea {
                           gdk::EventMask::BUTTON_PRESS_MASK |
                           gdk::EventMask::BUTTON_RELEASE_MASK);
 
-        let wolf_xpm = conv_xpm(&include_str!("wolf.xpm"))?;
-        let sheep_xpm = conv_xpm(&include_str!("sheep.xpm"))?;
+        let wolf_xpm = conv_xpm(include_str!("wolf.xpm"))?;
+        let sheep_xpm = conv_xpm(include_str!("sheep.xpm"))?;
 
-        let wolf_pixbuf = gdk_pixbuf::Pixbuf::from_xpm_data(&wolf_xpm.as_slice())
+        let wolf_pixbuf = gdk_pixbuf::Pixbuf::from_xpm_data(wolf_xpm.as_slice())
                             .scale_simple(70, 70, gdk_pixbuf::InterpType::Hyper)
                             .ok_or(ah::format_err!("Failed to scale wolf image."))?;
         let wolf_moving_pixbuf = wolf_pixbuf.copy()
@@ -204,7 +204,7 @@ impl DrawingArea {
     fn draw_token(&self, cairo: &cairo::Context,
                   pos: (f64, f64),
                   pixbuf: &gdk_pixbuf::Pixbuf) {
-        cairo.set_source_pixbuf(&pixbuf,
+        cairo.set_source_pixbuf(pixbuf,
                                 pos.0 - (pixbuf.width() / 2) as f64,
                                 pos.1 - (pixbuf.height() / 2) as f64);
         cairo.paint().ok();
@@ -320,6 +320,8 @@ impl DrawingArea {
         }
     }
 
+    #[allow(clippy::single_match)]
+    #[allow(clippy::collapsible_else_if)]
     fn mousebutton(&mut self, x: f64, y: f64, button: u32, press: bool) {
         match button {
             1 => { // left button
@@ -340,7 +342,7 @@ impl DrawingArea {
                             if game.get_move_state() != MoveState::NoMove {
                                 match game.get_field_state(pos) {
                                     FieldState::Empty => {
-                                        if let Err(_) = game.move_put(pos) {
+                                        if game.move_put(pos).is_err() {
                                             game.move_abort();
                                         }
                                     },

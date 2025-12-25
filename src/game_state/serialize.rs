@@ -29,6 +29,7 @@ impl GameState {
         let mut file = OpenOptions::new()
                             .write(true)
                             .create(true)
+                            .truncate(true)
                             .open(filename)?;
         file.write_all(&self.serialize()?)?;
         file.sync_all()?;
@@ -80,9 +81,8 @@ impl GameState {
         // Set the local game state to the message contents.
         self.reset_game(true);
         for msg in messages {
-            match msg.get_message() {
-                MsgType::GameState(msg) => { self.read_state_message(&msg, true)?; },
-                _ => (),
+            if let MsgType::GameState(msg) = msg.get_message() {
+                self.read_state_message(msg, true)?;
             }
         }
         // Send the local game state to the server (if any).

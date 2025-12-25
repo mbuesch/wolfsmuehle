@@ -111,9 +111,8 @@ pub fn net_sync(data: &[u8]) -> Option<usize> {
     let len = data.len();
     if len >= 4 {
         for skip in 0..(len - 4) {
-            match u32::from_net(&data[skip..]) {
-                Ok(MSG_MAGIC) => return Some(skip),
-                Ok(_) | Err(_) => (),
+            if let Ok(MSG_MAGIC) = u32::from_net(&data[skip..]) {
+                return Some(skip);
             }
         }
     }
@@ -129,10 +128,7 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
         return Ok((0, None));
     }
 
-    let (offset, header) = match MsgHeader::from_bytes(data) {
-        Ok(h) => h,
-        Err(e) => return Err(e),
-    };
+    let (offset, header) = MsgHeader::from_bytes(data)?;
     let msg_len = header.get_size();
     if data.len() < msg_len as usize {
         return Ok((0, None));
@@ -476,11 +472,11 @@ pub struct MsgJoin {
 }
 
 const MSG_JOIN_SIZE: u32 = MSG_HEADER_SIZE +
-                           (1 * 4) +
+                           4 +
                            MSG_MAXROOMNAME as u32 +
-                           (1 * 4) +
+                           4 +
                            MSG_MAXPLAYERNAME as u32 +
-                           (1 * 4);
+                           4;
 
 impl MsgJoin {
     pub fn new(room_name:   &str,
@@ -597,6 +593,7 @@ impl MsgGameState {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     pub fn from_bytes(header: MsgHeader, data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
         if data.len() >= (MSG_GAME_STATE_SIZE - MSG_HEADER_SIZE) as usize {
             let mut offset = 0;
@@ -686,7 +683,7 @@ const MSG_RECORD_SIZE: u32 = MSG_HEADER_SIZE +
 impl MsgRecord {
     pub fn new(record: &str) -> Vec<MsgRecord> {
         let record_bytes = record.as_bytes();
-        let total_count = (record_bytes.len() + MSG_MAXRECORDLEN - 1) / MSG_MAXRECORDLEN;
+        let total_count = record_bytes.len().div_ceil(MSG_MAXRECORDLEN);
         let mut ret = Vec::with_capacity(total_count);
         for i in 0..total_count {
             let len = min(record_bytes.len() - (i * MSG_MAXRECORDLEN),
@@ -748,7 +745,7 @@ impl MsgRecord {
         let bytes: Vec<u8> = parts
             .iter()
             .map(|m| m.get_record_part())
-            .fold(vec![], |mut a, b| { a.extend_from_slice(&b); a });
+            .fold(vec![], |mut a, b| { a.extend_from_slice(b); a });
         String::from_net(&bytes, bytes.len(), false)
     }
 }
@@ -873,7 +870,7 @@ pub struct MsgPlayerList {
 const MSG_PLAYER_LIST_SIZE: u32 = MSG_HEADER_SIZE +
                                   (3 * 4) +
                                   MSG_MAXPLAYERNAME as u32 +
-                                  (1 * 4);
+                                  4;
 
 impl MsgPlayerList {
     pub fn new(total_count: u32,
@@ -1059,9 +1056,9 @@ pub struct MsgSay {
 
 const MSG_SAY_MAXMSGLEN: usize = 0x200;
 const MSG_SAY_SIZE: u32 = MSG_HEADER_SIZE +
-                          (1 * 4) +
+                          4 +
                           MSG_MAXPLAYERNAME as u32 +
-                          (1 * 4) +
+                          4 +
                           MSG_SAY_MAXMSGLEN as u32;
 
 impl MsgSay {

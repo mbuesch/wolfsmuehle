@@ -142,7 +142,7 @@ fn app_fn(app: &gtk::Application) {
     let default_room = "default".to_string();
     let room_name = match opt.room {
         Some(rooms) => {
-            if rooms.len() >= 1 {
+            if !rooms.is_empty() {
                 rooms[0].to_string()
             } else {
                 default_room
@@ -151,7 +151,7 @@ fn app_fn(app: &gtk::Application) {
         None => default_room,
     };
 
-    let player_mode = match &opt.player_mode.to_lowercase().trim()[..] {
+    let player_mode = match opt.player_mode.to_lowercase().trim() {
         "wolf" => PlayerMode::Wolf,
         "sheep" => PlayerMode::Sheep,
         "both" => PlayerMode::Both,

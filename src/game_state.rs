@@ -439,9 +439,7 @@ impl GameState {
                     },
                 }
             }
-            if sheep_win {
-                WinState::Sheep
-            } else if self.wolves_are_stuck() {
+            if sheep_win || self.wolves_are_stuck() {
                 WinState::Sheep
             } else {
                 WinState::Undecided
@@ -497,6 +495,8 @@ impl GameState {
     }
 
     /// Check if a move from from_pos to to_pos is valid.
+    #[allow(clippy::nonminimal_bool)]
+    #[allow(clippy::collapsible_if)]
     fn validate_move(&self, from_pos: Coord, to_pos: Coord) -> ValidationResult {
         // Check if positions are on the board.
         if !coord_is_on_board(from_pos) || !coord_is_on_board(to_pos) {
@@ -772,7 +772,7 @@ impl GameState {
                 }
             },
         };
-        self.i_am_moving = !result.is_ok();
+        self.i_am_moving = result.is_err();
         result
     }
 
@@ -880,10 +880,7 @@ impl Drop for GameState {
 
 impl GameState {
     fn client_handle_rx_msg_gamestate(&mut self, msg: &MsgGameState) -> bool {
-        match self.read_state_message(msg, true) {
-            Ok(changed) => changed,
-            Err(_) => false,
-        }
+        self.read_state_message(msg, true).unwrap_or_default()
     }
 
     fn client_handle_rx_msg_roomlist(&mut self, msg: &MsgRoomList) {
@@ -989,10 +986,8 @@ impl GameState {
                     // Ignore.
                 },
                 MsgType::GameState(msg) => {
-                    if self.joined_room.is_some() {
-                        if self.client_handle_rx_msg_gamestate(msg) {
-                            redraw = true;
-                        }
+                    if self.joined_room.is_some() && self.client_handle_rx_msg_gamestate(msg) {
+                        redraw = true;
                     }
                 },
                 MsgType::RoomList(msg) => {
@@ -1016,11 +1011,10 @@ impl GameState {
     pub fn poll_server(&mut self) -> bool {
         let mut redraw = false;
         loop {
-            if let Some(client) = self.client.as_mut() {
-                if let Some(messages) = client.poll() {
-                    redraw |= self.client_handle_rx_messages(messages);
-                    continue;
-                }
+            if let Some(client) = self.client.as_mut() &&
+               let Some(messages) = client.poll() {
+                redraw |= self.client_handle_rx_messages(messages);
+                continue;
             }
             break;
         }
@@ -1047,10 +1041,7 @@ impl GameState {
             Some(room_name) =>
                 Some(room_name.to_string()),
             None =>
-                match self.joined_room.as_ref() {
-                    Some(joined_room) => Some(joined_room.to_string()),
-                    None => None,
-                },
+                self.joined_room.as_ref().cloned(),
         };
 
         let player_name = match player_name {
@@ -1065,22 +1056,17 @@ impl GameState {
 
         let old_joined_room = self.joined_room.take();
 
-        if let Some(client) = self.client.as_mut() {
-            match room_name {
-                Some(room_name) => {
-                    match client.send_join(&room_name,
-                                           player_name,
-                                           player_mode) {
-                        Ok(_) => {
-                            self.joined_room = Some(room_name);
-                        },
-                        Err(e) => {
-                            self.joined_room = old_joined_room;
-                            return Err(e);
-                        },
-                    }
+        if let Some(client) = self.client.as_mut() && let Some(room_name) = room_name {
+            match client.send_join(&room_name,
+                                    player_name,
+                                    player_mode) {
+                Ok(_) => {
+                    self.joined_room = Some(room_name);
                 },
-                None => (),
+                Err(e) => {
+                    self.joined_room = old_joined_room;
+                    return Err(e);
+                },
             }
         }
 
@@ -1136,52 +1122,47 @@ impl GameState {
     }
 
     fn client_send_reset_game(&mut self) {
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_reset() {
-                Print::error(&format!("Failed to game-reset: {}", e));
-            }
+        if let Some(client) = self.client.as_mut() && let Err(e) = client.send_reset() {
+            Print::error(&format!("Failed to game-reset: {}", e));
         }
     }
 
     /// Send the move-pick to the server.
     fn client_send_move_pick(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PICK,
+        if let Some(client) = self.client.as_mut() &&
+           let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PICK,
                                                    token_id,
                                                    pos.x as u32,
                                                    pos.y as u32) {
-                let msg = format!("Move-pick failed on server: {}", e);
-                Print::error(&msg);
-                return Err(ah::format_err!("{}", msg));
-            }
+            let msg = format!("Move-pick failed on server: {}", e);
+            Print::error(&msg);
+            return Err(ah::format_err!("{}", msg));
         }
         Ok(())
     }
 
     /// Send the move-put to the server.
     fn client_send_move_put(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PUT,
+        if let Some(client) = self.client.as_mut() &&
+            let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PUT,
                                                    token_id,
                                                    pos.x as u32,
                                                    pos.y as u32) {
-                let msg = format!("Move failed on server: {}", e);
-                Print::error(&msg);
-                return Err(ah::format_err!("{}", msg));
-            }
+            let msg = format!("Move failed on server: {}", e);
+            Print::error(&msg);
+            return Err(ah::format_err!("{}", msg));
         }
         Ok(())
     }
 
     /// Send the move-abort to the server.
     fn client_send_move_abort(&mut self, pos: Coord) -> ah::Result<()> {
-        if let Some(client) = self.client.as_mut() {
-            if let Err(e) = client.send_move_token(MSG_MOVE_ACTION_ABORT,
+        if let Some(client) = self.client.as_mut() &&
+            let Err(e) = client.send_move_token(MSG_MOVE_ACTION_ABORT,
                                                    MSG_MOVE_TOKEN_CURRENT,
                                                    pos.x as u32,
                                                    pos.y as u32) {
-                Print::error(&format!("Move-abort failed on server: {}", e));
-            }
+            Print::error(&format!("Move-abort failed on server: {}", e));
         }
         Ok(())
     }

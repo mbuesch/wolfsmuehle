@@ -84,7 +84,7 @@ impl Client {
         if DEBUG_RAW {
             Print::debug(&format!("Client TX: {:?}", data));
         }
-        self.stream.write(data)?;
+        self.stream.write_all(data)?;
         Ok(())
     }
 
@@ -250,7 +250,7 @@ impl Client {
                     }
                 })?;
             let ret = ret.borrow();
-            if ret.len() >= 1 {
+            if !ret.is_empty() {
                 let count = ret.iter().next().unwrap().1.get_total_count();
                 if count > 0x1000 {
                     return Err(ah::format_err!("Received MsgRecord with very big total_count."));

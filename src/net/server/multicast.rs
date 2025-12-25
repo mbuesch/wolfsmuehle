@@ -107,14 +107,11 @@ impl MulticastRouter {
                 for to_sub in &self.subs {
                     // Send it.
                     // Include ourselves only, if requested.
-                    if !std::ptr::eq(from_sub, to_sub) ||
-                       pack.include_self {
-
-                        if let Err(e) = to_sub.to_sub.send(pack.clone()) {
-                            // This may happen, if the channel has just been closed,
-                            // but the killed-check hasn't caught it, yet.
-                            Print::debug(&format!("Failed to route: {}", e));
-                        }
+                    if (!std::ptr::eq(from_sub, to_sub) || pack.include_self) &&
+                       let Err(e) = to_sub.to_sub.send(pack.clone()) {
+                        // This may happen, if the channel has just been closed,
+                        // but the killed-check hasn't caught it, yet.
+                        Print::debug(&format!("Failed to route: {}", e));
                     }
                 }
             }
@@ -170,11 +167,7 @@ impl MulticastSubscriber {
 
     /// Try to receive data from the router.
     pub fn receive(&self) -> Option<MulticastPacket> {
-        if let Ok(pack) = self.from_router.try_recv() {
-            Some(pack)
-        } else {
-            None
-        }
+        self.from_router.try_recv().ok()
     }
 }
 
