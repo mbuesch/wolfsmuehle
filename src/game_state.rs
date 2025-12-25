@@ -411,7 +411,7 @@ impl GameState {
     }
 
     pub fn get_win_state(&self) -> WinState {
-        if self.get_stats().sheep < 7 {
+        if self.get_stats().sheep < 9 {
             WinState::Wolf
         } else {
             let mut sheep_win = true;

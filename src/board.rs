@@ -73,7 +73,7 @@ macro_rules! field {
 pub const BOARD_POSITIONS: [[PosType; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize] = [
     [ invalid!(), invalid!(), barn!(),  invalid!(), invalid!(), ],
     [ invalid!(), barn!(),    barn!(),  barn!(),    invalid!(), ],
-    [ field!(),   barn!(),    barn!(),  barn!(),    field!(),   ],
+    [ barn!(),    barn!(),    barn!(),  barn!(),    barn!(),    ],
     [ field!(),   field!(),   field!(), field!(),   field!(),   ],
     [ field!(),   field!(),   field!(), field!(),   field!(),   ],
     [ field!(),   field!(),   field!(), field!(),   field!(),   ],

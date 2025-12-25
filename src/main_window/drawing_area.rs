@@ -187,6 +187,15 @@ impl DrawingArea {
         let pos = pos2pix(&coord!(2, 0));
         cairo.line_to(pos.0, pos.1);
         cairo.fill().ok();
+        let pos = pos2pix(&coord!(0, 2));
+        cairo.move_to(pos.0, pos.1);
+        let pos = pos2pix(&coord!(4, 2));
+        cairo.line_to(pos.0, pos.1);
+        cairo.line_to(pos.0, pos.1 + POSDIST * 0.20);
+        let pos = pos2pix(&coord!(0, 2));
+        cairo.line_to(pos.0, pos.1 + POSDIST * 0.20);
+        cairo.line_to(pos.0, pos.1);
+        cairo.fill().ok();
     }
 
     fn draw_board_lines(&self, cairo: &cairo::Context) {
