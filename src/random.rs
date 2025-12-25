@@ -17,11 +17,11 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
+use rand::{Rng, distr::Alphanumeric, rng};
 
 pub fn random_alphanum(num_chars: usize) -> String {
     std::iter::repeat(())
-        .map(|_| thread_rng().sample(Alphanumeric))
+        .map(|_| rng().sample(Alphanumeric))
         .map(char::from)
         .take(num_chars)
         .collect()
