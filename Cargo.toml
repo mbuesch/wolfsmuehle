@@ -33,7 +33,7 @@ cairo-rs        = { version = "0.18", optional = true }
 gdk             = { version = "0.18", optional = true }
 gdk-pixbuf      = { version = "0.18", optional = true }
 gio             = { version = "0.18", optional = true }
-glib            = { version = "0.18", optional = true }
+glib            = { version = "0.20", optional = true }
 gtk             = { version = "0.18", optional = true }
 
 [profile.dev]
