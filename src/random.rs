@@ -17,11 +17,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
-use rand::{
-    Rng,
-    thread_rng,
-    distributions::Alphanumeric,
-};
+use rand::{Rng, distributions::Alphanumeric, thread_rng};
 
 pub fn random_alphanum(num_chars: usize) -> String {
     std::iter::repeat(())

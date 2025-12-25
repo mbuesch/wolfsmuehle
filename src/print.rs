@@ -51,7 +51,7 @@ macro_rules! define_printer {
                 }
             }
         }
-    }
+    };
 }
 
 impl Print {

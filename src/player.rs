@@ -17,41 +17,32 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
-use anyhow as ah;
 use crate::net::protocol::{
-    MSG_PLAYERMODE_SPECTATOR,
-    MSG_PLAYERMODE_WOLF,
-    MSG_PLAYERMODE_SHEEP,
-    MSG_PLAYERMODE_BOTH,
+    MSG_PLAYERMODE_BOTH, MSG_PLAYERMODE_SHEEP, MSG_PLAYERMODE_SPECTATOR, MSG_PLAYERMODE_WOLF,
 };
-use std::cmp::{Ord, PartialOrd, Eq, PartialEq};
+use anyhow as ah;
+use std::cmp::{Eq, Ord, PartialEq, PartialOrd};
 use std::fmt;
 
 pub fn num_to_player_mode(player_mode: u32) -> ah::Result<PlayerMode> {
     match player_mode {
-        MSG_PLAYERMODE_SPECTATOR =>
-            Ok(PlayerMode::Spectator),
-        MSG_PLAYERMODE_BOTH =>
-            Ok(PlayerMode::Both),
-        MSG_PLAYERMODE_WOLF =>
-            Ok(PlayerMode::Wolf),
-        MSG_PLAYERMODE_SHEEP =>
-            Ok(PlayerMode::Sheep),
-        _ =>
-            Err(ah::format_err!("Received invalid player_mode: {}", player_mode)),
+        MSG_PLAYERMODE_SPECTATOR => Ok(PlayerMode::Spectator),
+        MSG_PLAYERMODE_BOTH => Ok(PlayerMode::Both),
+        MSG_PLAYERMODE_WOLF => Ok(PlayerMode::Wolf),
+        MSG_PLAYERMODE_SHEEP => Ok(PlayerMode::Sheep),
+        _ => Err(ah::format_err!(
+            "Received invalid player_mode: {}",
+            player_mode
+        )),
     }
 }
 
 pub const fn player_mode_to_num(player_mode: PlayerMode) -> u32 {
     match player_mode {
-        PlayerMode::Spectator =>
-            MSG_PLAYERMODE_SPECTATOR,
-        PlayerMode::Both =>
-            MSG_PLAYERMODE_BOTH,
-        PlayerMode::Wolf =>
-            MSG_PLAYERMODE_WOLF,
-        PlayerMode::Sheep =>
-            MSG_PLAYERMODE_SHEEP,
+        PlayerMode::Spectator => MSG_PLAYERMODE_SPECTATOR,
+        PlayerMode::Both => MSG_PLAYERMODE_BOTH,
+        PlayerMode::Wolf => MSG_PLAYERMODE_WOLF,
+        PlayerMode::Sheep => MSG_PLAYERMODE_SHEEP,
     }
 }
 
@@ -69,26 +60,28 @@ pub enum PlayerMode {
 
 impl fmt::Display for PlayerMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            PlayerMode::Spectator => "Spectator",
-            PlayerMode::Both => "Wolf and sheep",
-            PlayerMode::Wolf => "Wolf",
-            PlayerMode::Sheep => "Sheep",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                PlayerMode::Spectator => "Spectator",
+                PlayerMode::Both => "Wolf and sheep",
+                PlayerMode::Wolf => "Wolf",
+                PlayerMode::Sheep => "Sheep",
+            }
+        )
     }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Player {
-    pub name:       String,
-    pub mode:       PlayerMode,
-    pub is_self:    bool,
+    pub name: String,
+    pub mode: PlayerMode,
+    pub is_self: bool,
 }
 
 impl Player {
-    pub fn new(name: String,
-               mode: PlayerMode,
-               is_self: bool) -> Player {
+    pub fn new(name: String, mode: PlayerMode, is_self: bool) -> Player {
         Player {
             name,
             mode,
@@ -112,14 +105,12 @@ impl Ord for Player {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PlayerList {
-    players:    Vec<Player>,
+    players: Vec<Player>,
 }
 
 impl PlayerList {
     pub fn new(players: Vec<Player>) -> PlayerList {
-        PlayerList {
-            players,
-        }
+        PlayerList { players }
     }
 
     pub fn count(&self) -> usize {
@@ -167,8 +158,8 @@ impl PlayerList {
 }
 
 pub struct PlayerListIterator<'a> {
-    player_list:    &'a PlayerList,
-    index:          usize,
+    player_list: &'a PlayerList,
+    index: usize,
 }
 
 impl<'a> PlayerListIterator<'a> {

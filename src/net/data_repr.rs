@@ -18,8 +18,8 @@
 //
 
 use anyhow as ah;
-use std::convert::TryInto;
 use std::cmp::min;
+use std::convert::TryInto;
 
 pub trait ToNet32 {
     /// Convert to network byte order.

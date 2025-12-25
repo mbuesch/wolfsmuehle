@@ -17,11 +17,11 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
-use anyhow as ah;
-use crate::board::{BOARD_WIDTH, BOARD_HEIGHT, coord_is_on_board};
-use crate::coord::{Coord, CoordAxis};
-use crate::coord;
 use super::{MoveState, WinState};
+use crate::board::{BOARD_HEIGHT, BOARD_WIDTH, coord_is_on_board};
+use crate::coord;
+use crate::coord::{Coord, CoordAxis};
+use anyhow as ah;
 
 const X_NAMES: [char; BOARD_WIDTH as usize] = ['a', 'b', 'c', 'd', 'e'];
 const Y_NAMES: [char; BOARD_HEIGHT as usize] = ['7', '6', '5', '4', '3', '2', '1'];
@@ -32,25 +32,38 @@ fn coord_to_recorder_pos(pos: &Coord) -> String {
 
 fn recorder_pos_to_coord(chars: &[char]) -> ah::Result<Coord> {
     if chars.len() != 2 {
-        return Err(ah::format_err!("Recorder position: Invalid size ({} != 2).",
-                                   chars.len()));
+        return Err(ah::format_err!(
+            "Recorder position: Invalid size ({} != 2).",
+            chars.len()
+        ));
     }
     let x_char: char = chars[0].to_lowercase().next().unwrap();
     let x = match X_NAMES.iter().position(|&x| x == x_char) {
         Some(x) => x,
-        None => return Err(ah::format_err!("Recorder position: Invalid X coordinate: {}",
-                                           chars[0])),
+        None => {
+            return Err(ah::format_err!(
+                "Recorder position: Invalid X coordinate: {}",
+                chars[0]
+            ));
+        }
     };
     let y_char: char = chars[1].to_lowercase().next().unwrap();
     let y = match Y_NAMES.iter().position(|&y| y == y_char) {
         Some(y) => y,
-        None => return Err(ah::format_err!("Recorder position: Invalid Y coordinate: {}",
-                                           chars[1])),
+        None => {
+            return Err(ah::format_err!(
+                "Recorder position: Invalid Y coordinate: {}",
+                chars[1]
+            ));
+        }
     };
     let pos = coord!(x as CoordAxis, y as CoordAxis);
     if !coord_is_on_board(pos) {
-        return Err(ah::format_err!("Recorder position: Position {}{} is not on the board.",
-                                   chars[0], chars[1]));
+        return Err(ah::format_err!(
+            "Recorder position: Position {}{} is not on the board.",
+            chars[0],
+            chars[1]
+        ));
     }
     Ok(pos)
 }
@@ -58,13 +71,13 @@ fn recorder_pos_to_coord(chars: &[char]) -> ah::Result<Coord> {
 /// One recorded game move.
 pub struct RecordedMove {
     /// The token that has been moved from the given position.
-    pub move_state:     MoveState,
+    pub move_state: MoveState,
     /// The target position of the move.
-    pub to_pos:         Coord,
+    pub to_pos: Coord,
     /// True, if a token has been captured during this move.
-    pub captured:       bool,
+    pub captured: bool,
     /// The game-win state after this move.
-    pub win_state:      WinState,
+    pub win_state: WinState,
 }
 
 impl RecordedMove {
@@ -82,7 +95,7 @@ impl RecordedMove {
             'S' | 's' => MoveState::Sheep,
             other => {
                 return Err(ah::format_err!("Recorder log: Invalid token ID: {}", other));
-            },
+            }
         };
         offset += 1;
 
@@ -90,7 +103,7 @@ impl RecordedMove {
         if chars[offset..].len() < 2 {
             return Err(ah::format_err!("Recorder log: No from-position."));
         }
-        let from_pos = recorder_pos_to_coord(&chars[offset..offset+2])?;
+        let from_pos = recorder_pos_to_coord(&chars[offset..offset + 2])?;
         let move_state = move_state_type(from_pos);
         offset += 2;
 
@@ -101,16 +114,17 @@ impl RecordedMove {
         let (win_state, captured) = match chars[offset] {
             '-' => (WinState::Undecided, false),
             'X' | 'x' => (WinState::Undecided, true),
-            '#' => {
-                match move_state {
-                    MoveState::Wolf(_) => (WinState::Wolf, true),
-                    MoveState::Sheep(_) => (WinState::Sheep, false),
-                    _ => return Err(ah::format_err!("Recorder log: Internal error")),
-                }
+            '#' => match move_state {
+                MoveState::Wolf(_) => (WinState::Wolf, true),
+                MoveState::Sheep(_) => (WinState::Sheep, false),
+                _ => return Err(ah::format_err!("Recorder log: Internal error")),
             },
             other => {
-                return Err(ah::format_err!("Recorder log: Invalid move type: {}", other));
-            },
+                return Err(ah::format_err!(
+                    "Recorder log: Invalid move type: {}",
+                    other
+                ));
+            }
         };
         offset += 1;
 
@@ -118,7 +132,7 @@ impl RecordedMove {
         if chars[offset..].len() < 2 {
             return Err(ah::format_err!("Recorder log: No to-position."));
         }
-        let to_pos = recorder_pos_to_coord(&chars[offset..offset+2])?;
+        let to_pos = recorder_pos_to_coord(&chars[offset..offset + 2])?;
 
         Ok(RecordedMove {
             move_state,
@@ -137,14 +151,23 @@ impl std::fmt::Display for RecordedMove {
             MoveState::Sheep(from_pos) => ("S", from_pos),
         };
         let move_type = match self.win_state {
-            WinState::Undecided => if self.captured { "x" } else { "-" },
+            WinState::Undecided => {
+                if self.captured {
+                    "x"
+                } else {
+                    "-"
+                }
+            }
             WinState::Wolf | WinState::Sheep => "#",
         };
-        write!(f, "{}{}{}{}",
-               from_type,
-               &coord_to_recorder_pos(&from_pos),
-               move_type,
-               &coord_to_recorder_pos(&self.to_pos))
+        write!(
+            f,
+            "{}{}{}{}",
+            from_type,
+            &coord_to_recorder_pos(&from_pos),
+            move_type,
+            &coord_to_recorder_pos(&self.to_pos)
+        )
     }
 }
 
@@ -154,9 +177,7 @@ pub struct Recorder {
 
 impl Recorder {
     pub fn new() -> Recorder {
-        Recorder {
-            move_log: vec![],
-        }
+        Recorder { move_log: vec![] }
     }
 
     pub fn reset(&mut self) {

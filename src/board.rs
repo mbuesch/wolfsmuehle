@@ -17,12 +17,13 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
-use crate::coord::{Coord, CoordAxis};
 use crate::coord;
+use crate::coord::{Coord, CoordAxis};
 
-pub const BOARD_WIDTH: CoordAxis    = 5;
-pub const BOARD_HEIGHT: CoordAxis   = 7;
+pub const BOARD_WIDTH: CoordAxis = 5;
+pub const BOARD_HEIGHT: CoordAxis = 7;
 
+#[rustfmt::skip]
 pub const BOARD_LINES: [(Coord, Coord); 15] = [
     // Vertical lines
     (coord!(0, 2), coord!(0, 6)),
@@ -52,10 +53,23 @@ pub enum PosType {
     Field,
 }
 
-macro_rules! invalid { () => { PosType::Invalid } }
-macro_rules! barn { () => { PosType::Barn } }
-macro_rules! field { () => { PosType::Field } }
+macro_rules! invalid {
+    () => {
+        PosType::Invalid
+    };
+}
+macro_rules! barn {
+    () => {
+        PosType::Barn
+    };
+}
+macro_rules! field {
+    () => {
+        PosType::Field
+    };
+}
 
+#[rustfmt::skip]
 pub const BOARD_POSITIONS: [[PosType; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize] = [
     [ invalid!(), invalid!(), barn!(),  invalid!(), invalid!(), ],
     [ invalid!(), barn!(),    barn!(),  barn!(),    invalid!(), ],
@@ -68,9 +82,11 @@ pub const BOARD_POSITIONS: [[PosType; BOARD_WIDTH as usize]; BOARD_HEIGHT as usi
 
 /// Check if a position is on the board.
 pub fn coord_is_on_board(pos: Coord) -> bool {
-    pos.x >= 0 && pos.x < BOARD_WIDTH &&
-    pos.y >= 0 && pos.y < BOARD_HEIGHT &&
-    BOARD_POSITIONS[pos.y as usize][pos.x as usize] != PosType::Invalid
+    pos.x >= 0
+        && pos.x < BOARD_WIDTH
+        && pos.y >= 0
+        && pos.y < BOARD_HEIGHT
+        && BOARD_POSITIONS[pos.y as usize][pos.x as usize] != PosType::Invalid
 }
 
 /// Check if a position is on the main diagonal lines.
@@ -99,10 +115,7 @@ pub struct BoardIterator {
 
 impl BoardIterator {
     pub fn new() -> BoardIterator {
-        BoardIterator {
-            x: 0,
-            y: 0,
-        }
+        BoardIterator { x: 0, y: 0 }
     }
 }
 
@@ -130,7 +143,7 @@ impl Iterator for BoardIterator {
                     if coord_is_on_board(coord) {
                         break Some(coord);
                     }
-                },
+                }
             }
         }
     }
@@ -152,7 +165,9 @@ impl Iterator for BoardPosIterator {
     type Item = (Coord, PosType);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|coord| (coord, BOARD_POSITIONS[coord.y as usize][coord.x as usize]))
+        self.iter
+            .next()
+            .map(|coord| (coord, BOARD_POSITIONS[coord.y as usize][coord.x as usize]))
     }
 }
 

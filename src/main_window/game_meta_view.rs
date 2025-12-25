@@ -26,38 +26,38 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct GameMetaView {
-    game:                   Rc<RefCell<GameState>>,
-    roomlist_model:         gtk::ListStore,
-    playerlist_model:       gtk::ListStore,
-    displayed_playerlist:   PlayerList,
-    displayed_roomlist:     Vec<String>,
-    player_name_entry:      gtk::Entry,
-    player_mode_combo:      gtk::ComboBoxText,
-    player_name_editing:    bool,
-    chat_text:              gtk::TextView,
-    chat_say_entry:         gtk::Entry,
+    game: Rc<RefCell<GameState>>,
+    roomlist_model: gtk::ListStore,
+    playerlist_model: gtk::ListStore,
+    displayed_playerlist: PlayerList,
+    displayed_roomlist: Vec<String>,
+    player_name_entry: gtk::Entry,
+    player_mode_combo: gtk::ComboBoxText,
+    player_name_editing: bool,
+    chat_text: gtk::TextView,
+    chat_say_entry: gtk::Entry,
 }
 
 impl GameMetaView {
-    pub fn new(game:                Rc<RefCell<GameState>>,
-               room_tree_view:      gtk::TreeView,
-               player_tree_view:    gtk::TreeView,
-               player_name_entry:   gtk::Entry,
-               player_mode_combo:   gtk::ComboBoxText,
-               chat_text:           gtk::TextView,
-               chat_say_entry:      gtk::Entry) -> GameMetaView {
+    pub fn new(
+        game: Rc<RefCell<GameState>>,
+        room_tree_view: gtk::TreeView,
+        player_tree_view: gtk::TreeView,
+        player_name_entry: gtk::Entry,
+        player_mode_combo: gtk::ComboBoxText,
+        chat_text: gtk::TextView,
+        chat_say_entry: gtk::Entry,
+    ) -> GameMetaView {
         // Room list
         for i in 0..2 {
             let column = gtk::TreeViewColumn::new();
             let cell = gtk::CellRendererText::new();
             CellLayoutExt::pack_start(&column, &cell, true);
             TreeViewColumnExt::add_attribute(&column, &cell, "text", i);
-            column.set_title(["Room name",
-                              "joined", ][i as usize]);
+            column.set_title(["Room name", "joined"][i as usize]);
             room_tree_view.append_column(&column);
         }
-        let roomlist_model = gtk::ListStore::new(&[String::static_type(),
-                                                   String::static_type(), ]);
+        let roomlist_model = gtk::ListStore::new(&[String::static_type(), String::static_type()]);
         room_tree_view.set_model(Some(&roomlist_model));
 
         // Player list
@@ -66,14 +66,14 @@ impl GameMetaView {
             let cell = gtk::CellRendererText::new();
             CellLayoutExt::pack_start(&column, &cell, true);
             TreeViewColumnExt::add_attribute(&column, &cell, "text", i);
-            column.set_title(["Player name",
-                              "Mode",
-                              "is me", ][i as usize]);
+            column.set_title(["Player name", "Mode", "is me"][i as usize]);
             player_tree_view.append_column(&column);
         }
-        let playerlist_model = gtk::ListStore::new(&[String::static_type(),
-                                                     String::static_type(),
-                                                     String::static_type(), ]);
+        let playerlist_model = gtk::ListStore::new(&[
+            String::static_type(),
+            String::static_type(),
+            String::static_type(),
+        ]);
         player_tree_view.set_model(Some(&playerlist_model));
 
         GameMetaView {
@@ -93,12 +93,13 @@ impl GameMetaView {
     fn do_update_player_list(&mut self, player_list: &PlayerList) {
         self.playerlist_model.clear();
         for player in player_list.iter() {
-
             self.playerlist_model.insert_with_values(
                 None,
-                &[(0, &player.name),
-                  (1, &format!("{}", player.mode)),
-                  (2, &if player.is_self { "<---" } else { "" }), ]
+                &[
+                    (0, &player.name),
+                    (1, &format!("{}", player.mode)),
+                    (2, &if player.is_self { "<---" } else { "" }),
+                ],
             );
         }
         self.displayed_playerlist = player_list.clone();
@@ -112,14 +113,12 @@ impl GameMetaView {
                 }
                 if self.get_player_mode() != player.mode {
                     match player.mode {
-                        PlayerMode::Spectator =>
-                            self.player_mode_combo.set_active_id(Some("spectator")),
-                        PlayerMode::Wolf =>
-                            self.player_mode_combo.set_active_id(Some("wolf")),
-                        PlayerMode::Sheep =>
-                            self.player_mode_combo.set_active_id(Some("sheep")),
-                        PlayerMode::Both =>
-                            self.player_mode_combo.set_active_id(Some("both")),
+                        PlayerMode::Spectator => {
+                            self.player_mode_combo.set_active_id(Some("spectator"))
+                        }
+                        PlayerMode::Wolf => self.player_mode_combo.set_active_id(Some("wolf")),
+                        PlayerMode::Sheep => self.player_mode_combo.set_active_id(Some("sheep")),
+                        PlayerMode::Both => self.player_mode_combo.set_active_id(Some("both")),
                     };
                 }
             }
@@ -129,7 +128,7 @@ impl GameMetaView {
     pub fn update_player_list(&mut self, player_list: &PlayerList) {
         if !self.player_name_editing {
             if *player_list != self.displayed_playerlist {
-               self.do_update_player_list(player_list);
+                self.do_update_player_list(player_list);
             }
             self.do_update_local_player(player_list);
         }
@@ -143,7 +142,6 @@ impl GameMetaView {
 
     pub fn update_room_list(&mut self, room_list: &Vec<String>) {
         if self.displayed_roomlist != *room_list {
-
             self.roomlist_model.clear();
             for room_name in room_list {
                 let is_joined_room = match self.game.borrow().client_get_joined_room() {
@@ -153,8 +151,10 @@ impl GameMetaView {
 
                 self.roomlist_model.insert_with_values(
                     None,
-                    &[(0, &room_name),
-                      (1, &if is_joined_room { "<---" } else { "" }), ]
+                    &[
+                        (0, &room_name),
+                        (1, &if is_joined_room { "<---" } else { "" }),
+                    ],
                 );
             }
             self.displayed_roomlist = room_list.clone();
@@ -168,7 +168,9 @@ impl GameMetaView {
             {
                 let mut game = self.game.borrow_mut();
 
-                if let Some(joined_room) = game.client_get_joined_room() && joined_room == room_name {
+                if let Some(joined_room) = game.client_get_joined_room()
+                    && joined_room == room_name
+                {
                     return;
                 }
 
@@ -194,7 +196,8 @@ impl GameMetaView {
             Err(e) => {
                 messagebox_error::<gtk::Window>(
                     None,
-                    &format!("Failed set new player name:\n{}", e));
+                    &format!("Failed set new player name:\n{}", e),
+                );
             }
         }
         self.player_name_editing = false;
@@ -202,14 +205,12 @@ impl GameMetaView {
 
     fn playermode_changed(&self) {
         let new_mode = match self.player_mode_combo.active_id() {
-            Some(id) => {
-                match id.as_str() {
-                    "spectator" => PlayerMode::Spectator,
-                    "wolf" => PlayerMode::Wolf,
-                    "sheep" => PlayerMode::Sheep,
-                    "both" => PlayerMode::Both,
-                    _ => PlayerMode::Spectator,
-                }
+            Some(id) => match id.as_str() {
+                "spectator" => PlayerMode::Spectator,
+                "wolf" => PlayerMode::Wolf,
+                "sheep" => PlayerMode::Sheep,
+                "both" => PlayerMode::Both,
+                _ => PlayerMode::Spectator,
             },
             _ => PlayerMode::Spectator,
         };
@@ -219,7 +220,8 @@ impl GameMetaView {
             Err(e) => {
                 messagebox_error::<gtk::Window>(
                     None,
-                    &format!("Failed set new player mode:\n{}", e));
+                    &format!("Failed set new player mode:\n{}", e),
+                );
             }
         }
     }
@@ -228,10 +230,10 @@ impl GameMetaView {
         if let Some(active_id) = self.player_mode_combo.active_id() {
             match active_id.as_str() {
                 "spectator" => PlayerMode::Spectator,
-                "wolf"      => PlayerMode::Wolf,
-                "sheep"     => PlayerMode::Sheep,
-                "both"      => PlayerMode::Both,
-                _           => PlayerMode::Spectator,
+                "wolf" => PlayerMode::Wolf,
+                "sheep" => PlayerMode::Sheep,
+                "both" => PlayerMode::Both,
+                _ => PlayerMode::Spectator,
             }
         } else {
             PlayerMode::Spectator
@@ -252,7 +254,11 @@ impl GameMetaView {
             // Add all messages to the text view
             let start = buffer.start_iter();
             let end = buffer.end_iter();
-            let mut text = buffer.text(&start, &end, true).unwrap().as_str().to_string();
+            let mut text = buffer
+                .text(&start, &end, true)
+                .unwrap()
+                .as_str()
+                .to_string();
             for m in messages {
                 text.push_str(&format!("{}\n", m));
             }
@@ -269,11 +275,12 @@ impl GameMetaView {
         let text = self.chat_say_entry.text();
         if !text.as_str().is_empty() {
             Print::debug(&format!("Say: {}", text));
-            let ret = self.game.borrow_mut().client_send_chat_message(text.as_str());
+            let ret = self
+                .game
+                .borrow_mut()
+                .client_send_chat_message(text.as_str());
             if let Err(e) = ret {
-                messagebox_error::<gtk::Window>(
-                    None,
-                    &format!("Failed send chat message:\n{}", e));
+                messagebox_error::<gtk::Window>(None, &format!("Failed send chat message:\n{}", e));
             } else {
                 self.chat_say_entry.set_text("");
             }
@@ -313,23 +320,42 @@ impl GameMetaView {
         None
     }
 
-    pub fn connect_signals(_self: Rc<RefCell<GameMetaView>>,
-                           handler_name: &str) -> Option<GSigHandler> {
+    pub fn connect_signals(
+        _self: Rc<RefCell<GameMetaView>>,
+        handler_name: &str,
+    ) -> Option<GSigHandler> {
         match handler_name {
-            "handler_playername_changed" =>
-                Some(gsignal_connect_to_mut!(_self, gsignal_playername_changed, None)),
-            "handler_playername_activate" =>
-                Some(gsignal_connect_to_mut!(_self, gsignal_playername_editdone, None)),
-            "handler_playername_editdone" =>
-                Some(gsignal_connect_to_mut!(_self, gsignal_playername_editdone, None)),
-            "handler_playername_focusout" =>
-                Some(gsignal_connect_to_mut!(_self, gsignal_playername_focusout, Some(false.to_value()))),
-            "handler_playermode_changed" =>
-                Some(gsignal_connect_to_mut!(_self, gsignal_playermode_changed, None)),
-            "handler_roomtree_rowactivated" =>
-                Some(gsignal_connect_to_mut!(_self, gsignal_roomtree_rowactivated, None)),
-            "handler_chat_say" =>
-                Some(gsignal_connect_to_mut!(_self, gsignal_chat_say, None)),
+            "handler_playername_changed" => Some(gsignal_connect_to_mut!(
+                _self,
+                gsignal_playername_changed,
+                None
+            )),
+            "handler_playername_activate" => Some(gsignal_connect_to_mut!(
+                _self,
+                gsignal_playername_editdone,
+                None
+            )),
+            "handler_playername_editdone" => Some(gsignal_connect_to_mut!(
+                _self,
+                gsignal_playername_editdone,
+                None
+            )),
+            "handler_playername_focusout" => Some(gsignal_connect_to_mut!(
+                _self,
+                gsignal_playername_focusout,
+                Some(false.to_value())
+            )),
+            "handler_playermode_changed" => Some(gsignal_connect_to_mut!(
+                _self,
+                gsignal_playermode_changed,
+                None
+            )),
+            "handler_roomtree_rowactivated" => Some(gsignal_connect_to_mut!(
+                _self,
+                gsignal_roomtree_rowactivated,
+                None
+            )),
+            "handler_chat_say" => Some(gsignal_connect_to_mut!(_self, gsignal_chat_say, None)),
             _ => None,
         }
     }

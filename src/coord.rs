@@ -59,11 +59,8 @@ impl Sub for Coord {
 #[macro_export]
 macro_rules! coord {
     ( $x:expr, $y:expr ) => {
-        Coord {
-            x: $x,
-            y: $y,
-        }
-    }
+        Coord { x: $x, y: $y }
+    };
 }
 
 // vim: ts=4 sw=4 expandtab

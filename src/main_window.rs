@@ -23,18 +23,17 @@ use game_meta_view::GameMetaView;
 mod drawing_area;
 use drawing_area::DrawingArea;
 
-use anyhow as ah;
 use crate::game_state::GameState;
 use crate::gsignal_connect_to_mut;
 use crate::gtk_helpers::*;
 use crate::player::PlayerMode;
 use crate::print::Print;
+use anyhow as ah;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-const ABOUT_TEXT: &str =
-    "Wolfsmühle - Board game\n\
+const ABOUT_TEXT: &str = "Wolfsmühle - Board game\n\
      \n\
      Copyright 2021 Michael Buesch <m@bues.ch>\n\
      \n\
@@ -53,23 +52,24 @@ const ABOUT_TEXT: &str =
      51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.";
 
 pub struct MainWindow {
-    appwindow:              gtk::ApplicationWindow,
-    button_connect:         gtk::MenuItem,
-    button_disconnect:      gtk::MenuItem,
-    status_label:           gtk::Label,
-    game_meta_info_grid:    gtk::Grid,
-    draw:                   Rc<RefCell<DrawingArea>>,
-    game:                   Rc<RefCell<GameState>>,
-    game_meta_view:         Rc<RefCell<GameMetaView>>,
+    appwindow: gtk::ApplicationWindow,
+    button_connect: gtk::MenuItem,
+    button_disconnect: gtk::MenuItem,
+    status_label: gtk::Label,
+    game_meta_info_grid: gtk::Grid,
+    draw: Rc<RefCell<DrawingArea>>,
+    game: Rc<RefCell<GameState>>,
+    game_meta_view: Rc<RefCell<GameMetaView>>,
 }
 
 impl MainWindow {
-    pub fn new(app:               &gtk::Application,
-               connect_to_server: Option<String>,
-               room_name:         String,
-               player_name:       Option<String>,
-               player_mode:       PlayerMode)
-               -> ah::Result<Rc<RefCell<MainWindow>>> {
+    pub fn new(
+        app: &gtk::Application,
+        connect_to_server: Option<String>,
+        room_name: String,
+        player_name: Option<String>,
+        player_mode: PlayerMode,
+    ) -> ah::Result<Rc<RefCell<MainWindow>>> {
         // Create main window.
         let glade_source = include_str!("main_window.glade");
         let builder = gtk::Builder::from_string(glade_source);
@@ -86,8 +86,7 @@ impl MainWindow {
         let game_meta_info_grid: gtk::Grid = builder.object("game_meta_info_grid").unwrap();
 
         // Create game state.
-        let game = Rc::new(RefCell::new(GameState::new(player_mode,
-                                                       player_name)?));
+        let game = Rc::new(RefCell::new(GameState::new(player_mode, player_name)?));
         if let Some(connect_to_server) = &connect_to_server {
             let mut game = game.borrow_mut();
             game.client_connect(connect_to_server)?;
@@ -104,19 +103,21 @@ impl MainWindow {
         let player_mode_combo: gtk::ComboBoxText = builder.object("player_mode_combo").unwrap();
         let chat_text: gtk::TextView = builder.object("chat_text_view").unwrap();
         let chat_say_entry: gtk::Entry = builder.object("chat_say_entry").unwrap();
-        let game_meta_view = Rc::new(RefCell::new(
-            GameMetaView::new(Rc::clone(&game),
-                              room_tree,
-                              player_tree,
-                              player_name_entry,
-                              player_mode_combo,
-                              chat_text,
-                              chat_say_entry)));
+        let game_meta_view = Rc::new(RefCell::new(GameMetaView::new(
+            Rc::clone(&game),
+            room_tree,
+            player_tree,
+            player_name_entry,
+            player_mode_combo,
+            chat_text,
+            chat_say_entry,
+        )));
 
         // Create drawing area.
         let draw = Rc::new(RefCell::new(DrawingArea::new(
             builder.object("drawing_area").unwrap(),
-            Rc::clone(&game))?));
+            Rc::clone(&game),
+        )?));
 
         let mainwnd = Rc::new(RefCell::new(MainWindow {
             appwindow,
@@ -150,27 +151,23 @@ impl MainWindow {
             if let Some(handler) = DrawingArea::connect_signals(Rc::clone(&draw2), handler_name) {
                 return handler;
             }
-            if let Some(handler) = GameMetaView::connect_signals(Rc::clone(&game_meta_view2), handler_name) {
+            if let Some(handler) =
+                GameMetaView::connect_signals(Rc::clone(&game_meta_view2), handler_name)
+            {
                 return handler;
             }
 
             match handler_name {
-                "handler_resetgame" =>
-                    gsignal_connect_to_mut!(mainwnd2, gsignal_resetgame, None),
-                "handler_loadgame" =>
-                    gsignal_connect_to_mut!(mainwnd2, gsignal_loadgame, None),
-                "handler_savegame" =>
-                    gsignal_connect_to_mut!(mainwnd2, gsignal_savegame, None),
-                "handler_connect" =>
-                    gsignal_connect_to_mut!(mainwnd2, gsignal_connect, None),
-                "handler_disconnect" =>
-                    gsignal_connect_to_mut!(mainwnd2, gsignal_disconnect, None),
-                "handler_record_show" =>
-                    gsignal_connect_to_mut!(mainwnd2, gsignal_record_show, None),
-                "handler_about" =>
-                    gsignal_connect_to_mut!(mainwnd2, gsignal_about, None),
-                "handler_quit" =>
-                    gsignal_connect_to_mut!(mainwnd2, gsignal_quit, None),
+                "handler_resetgame" => gsignal_connect_to_mut!(mainwnd2, gsignal_resetgame, None),
+                "handler_loadgame" => gsignal_connect_to_mut!(mainwnd2, gsignal_loadgame, None),
+                "handler_savegame" => gsignal_connect_to_mut!(mainwnd2, gsignal_savegame, None),
+                "handler_connect" => gsignal_connect_to_mut!(mainwnd2, gsignal_connect, None),
+                "handler_disconnect" => gsignal_connect_to_mut!(mainwnd2, gsignal_disconnect, None),
+                "handler_record_show" => {
+                    gsignal_connect_to_mut!(mainwnd2, gsignal_record_show, None)
+                }
+                "handler_about" => gsignal_connect_to_mut!(mainwnd2, gsignal_about, None),
+                "handler_quit" => gsignal_connect_to_mut!(mainwnd2, gsignal_quit, None),
                 name => {
                     Print::error(&format!("Unhandled signal: {}", name));
                     Box::new(|_| None)
@@ -186,7 +183,9 @@ impl MainWindow {
     #[allow(clippy::collapsible_if)]
     #[allow(clippy::collapsible_else_if)]
     fn poll_timer(&mut self) {
-        if let Ok(mut draw) = self.draw.try_borrow_mut() && let Ok(mut game_meta_view) = self.game_meta_view.try_borrow_mut() {
+        if let Ok(mut draw) = self.draw.try_borrow_mut()
+            && let Ok(mut game_meta_view) = self.game_meta_view.try_borrow_mut()
+        {
             let redraw;
             let player_list;
             let room_list;
@@ -249,16 +248,11 @@ impl MainWindow {
 
         if let Ok(game) = self.game.try_borrow() {
             match game.client_get_addr() {
-                None =>
-                    status = Some("Local game. Not connected to server.".to_string()),
-                Some(addr) => {
-                    match game.client_get_joined_room() {
-                        None =>
-                            status = Some(format!("Connected to '{}' and not in a room.",
-                                                  addr)),
-                        Some(room) =>
-                            status = Some(format!("Connected to '{}' in room '{}'.",
-                                                  addr, room)),
+                None => status = Some("Local game. Not connected to server.".to_string()),
+                Some(addr) => match game.client_get_joined_room() {
+                    None => status = Some(format!("Connected to '{}' and not in a room.", addr)),
+                    Some(room) => {
+                        status = Some(format!("Connected to '{}' in room '{}'.", addr, room))
                     }
                 },
             }
@@ -279,12 +273,14 @@ impl MainWindow {
     }
 
     fn connect_game(&mut self) {
-        let dlg = gtk::MessageDialog::new(Some(&self.appwindow),
-                                          gtk::DialogFlags::MODAL,
-                                          gtk::MessageType::Question,
-                                          gtk::ButtonsType::OkCancel,
-                                          "Connect to a game server.\n\
-                                           Enter the server address here:");
+        let dlg = gtk::MessageDialog::new(
+            Some(&self.appwindow),
+            gtk::DialogFlags::MODAL,
+            gtk::MessageType::Question,
+            gtk::ButtonsType::OkCancel,
+            "Connect to a game server.\n\
+             Enter the server address here:",
+        );
         dlg.set_default_response(gtk::ResponseType::Ok);
         let content = dlg.content_area();
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -307,17 +303,18 @@ impl MainWindow {
         dlg.show_all();
 
         let result = dlg.run();
-        let addr = format!("{}:{}",
-                           entry_addr.text().as_str(),
-                           entry_port.text().as_str());
+        let addr = format!(
+            "{}:{}",
+            entry_addr.text().as_str(),
+            entry_port.text().as_str()
+        );
 
         if result == gtk::ResponseType::Ok {
             self.draw.borrow_mut().reset_game();
 
             let result = self.game.borrow_mut().client_connect(&addr);
             if let Err(e) = result {
-                messagebox_error(Some(&dlg),
-                                 &format!("Failed to connect to server:\n{}", e));
+                messagebox_error(Some(&dlg), &format!("Failed to connect to server:\n{}", e));
             } else {
                 self.game_meta_view.borrow_mut().clear_player_list();
                 self.button_connect.set_sensitive(false);
@@ -348,12 +345,16 @@ impl MainWindow {
             Some("Load game state"),
             Some(&self.appwindow),
             gtk::FileChooserAction::Open,
-            &[("_Cancel", gtk::ResponseType::Cancel), ("_Open", gtk::ResponseType::Accept)]);
-        if dlg.run() == gtk::ResponseType::Accept &&
-           let Some(filename) = dlg.filename() &&
-           let Err(e) = self.draw.borrow_mut().load_game(filename.as_path()) {
-            messagebox_error(Some(&dlg),
-                             &format!("Failed to load game:\n{}", e));
+            &[
+                ("_Cancel", gtk::ResponseType::Cancel),
+                ("_Open", gtk::ResponseType::Accept),
+            ],
+        );
+        if dlg.run() == gtk::ResponseType::Accept
+            && let Some(filename) = dlg.filename()
+            && let Err(e) = self.draw.borrow_mut().load_game(filename.as_path())
+        {
+            messagebox_error(Some(&dlg), &format!("Failed to load game:\n{}", e));
         }
         dlg.close();
     }
@@ -363,12 +364,16 @@ impl MainWindow {
             Some("Save game state"),
             Some(&self.appwindow),
             gtk::FileChooserAction::Save,
-            &[("_Cancel", gtk::ResponseType::Cancel), ("_Save", gtk::ResponseType::Accept)]);
-        if dlg.run() == gtk::ResponseType::Accept &&
-           let Some(filename) = dlg.filename() &&
-           let Err(e) = self.draw.borrow().save_game(filename.as_path()) {
-            messagebox_error(Some(&dlg),
-                             &format!("Failed to save game:\n{}", e));
+            &[
+                ("_Cancel", gtk::ResponseType::Cancel),
+                ("_Save", gtk::ResponseType::Accept),
+            ],
+        );
+        if dlg.run() == gtk::ResponseType::Accept
+            && let Some(filename) = dlg.filename()
+            && let Err(e) = self.draw.borrow().save_game(filename.as_path())
+        {
+            messagebox_error(Some(&dlg), &format!("Failed to save game:\n{}", e));
         }
         dlg.close();
     }

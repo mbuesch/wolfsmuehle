@@ -20,62 +20,33 @@
 mod recorder;
 mod serialize;
 
-use anyhow as ah;
 use crate::board::{
-    BOARD_HEIGHT,
-    BOARD_WIDTH,
-    BoardIterator,
-    BoardPosIterator,
-    PosType,
-    coord_is_on_board,
+    BOARD_HEIGHT, BOARD_WIDTH, BoardIterator, BoardPosIterator, PosType, coord_is_on_board,
     is_on_main_diag,
 };
+use crate::coord;
+use crate::coord::{Coord, CoordAxis};
+use crate::game_state::recorder::{RecordedMove, Recorder};
 use crate::net::{
     client::Client,
-    consts::{
-        MAX_PLAYERS,
-        MAX_ROOMS,
-    },
+    consts::{MAX_PLAYERS, MAX_ROOMS},
     protocol::{
-        MSG_MOVE_ACTION_ABORT,
-        MSG_MOVE_ACTION_MOVE,
-        MSG_MOVE_ACTION_PICK,
-        MSG_MOVE_ACTION_PUT,
-        MSG_MOVE_TOKEN_CURRENT,
-        MSG_MOVE_TOKEN_SHEEP,
-        MSG_MOVE_TOKEN_WOLF,
-        Message,
-        MsgGameState,
-        MsgMove,
-        MsgPlayerList,
-        MsgRoomList,
-        MsgSay,
-        MsgType,
+        MSG_MOVE_ACTION_ABORT, MSG_MOVE_ACTION_MOVE, MSG_MOVE_ACTION_PICK, MSG_MOVE_ACTION_PUT,
+        MSG_MOVE_TOKEN_CURRENT, MSG_MOVE_TOKEN_SHEEP, MSG_MOVE_TOKEN_WOLF, Message, MsgGameState,
+        MsgMove, MsgPlayerList, MsgRoomList, MsgSay, MsgType,
     },
 };
-use crate::coord::{
-    Coord,
-    CoordAxis,
-};
-use crate::coord;
-use crate::game_state::recorder::{
-    RecordedMove,
-    Recorder,
-};
-use crate::player::{
-    Player,
-    PlayerList,
-    PlayerMode,
-    num_to_player_mode,
-};
+use crate::player::{Player, PlayerList, PlayerMode, num_to_player_mode};
 use crate::print::Print;
 use crate::random::random_alphanum;
+use anyhow as ah;
 use std::collections::VecDeque;
 use std::fmt;
 
 const SAY_DEQUE_MAX_LEN: usize = 0x1000;
 
 /// All possible relative move offsets that could lead to a capture.
+#[rustfmt::skip]
 const CAPTURE_OFFSETS: [Coord; 12] = [
     // horizontal
     coord!(-2, 0),
@@ -97,6 +68,7 @@ const CAPTURE_OFFSETS: [Coord; 12] = [
 ];
 
 /// All possible relative non-capture move offsets.
+#[rustfmt::skip]
 const MOVE_OFFSETS: [Coord; 8] = [
     // horizontal
     coord!(1, 0),
@@ -122,9 +94,9 @@ pub enum FieldState {
 const fn field_state_to_num(field_state: FieldState) -> u32 {
     match field_state {
         FieldState::Unused => 0,
-        FieldState::Empty =>  1,
-        FieldState::Wolf =>   2,
-        FieldState::Sheep =>  3,
+        FieldState::Empty => 1,
+        FieldState::Wolf => 2,
+        FieldState::Sheep => 3,
     }
 }
 
@@ -147,19 +119,40 @@ pub enum WinState {
 
 impl fmt::Display for WinState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            WinState::Undecided => "undecided",
-            WinState::Wolf => "wolf",
-            WinState::Sheep => "sheep",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                WinState::Undecided => "undecided",
+                WinState::Wolf => "wolf",
+                WinState::Sheep => "sheep",
+            }
+        )
     }
 }
 
-macro_rules! unused { () => { FieldState::Unused } }
-macro_rules! empty { () => { FieldState::Empty } }
-macro_rules! wolf { () => { FieldState::Wolf } }
-macro_rules! sheep { () => { FieldState::Sheep } }
+macro_rules! unused {
+    () => {
+        FieldState::Unused
+    };
+}
+macro_rules! empty {
+    () => {
+        FieldState::Empty
+    };
+}
+macro_rules! wolf {
+    () => {
+        FieldState::Wolf
+    };
+}
+macro_rules! sheep {
+    () => {
+        FieldState::Sheep
+    };
+}
 
+#[rustfmt::skip]
 const INITIAL_STATE: [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize] = [
     [unused!(), unused!(), empty!(), unused!(), unused!(), ],
     [unused!(), empty!(),  empty!(), empty!(),  unused!(), ],
@@ -171,8 +164,8 @@ const INITIAL_STATE: [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize]
 ];
 
 pub fn is_opposite_token(a: FieldState, b: FieldState) -> bool {
-    (a == FieldState::Sheep && b == FieldState::Wolf) ||
-    (a == FieldState::Wolf  && b == FieldState::Sheep)
+    (a == FieldState::Sheep && b == FieldState::Wolf)
+        || (a == FieldState::Wolf && b == FieldState::Sheep)
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -184,9 +177,9 @@ pub enum MoveState {
 
 const fn move_state_to_num(move_state: &MoveState) -> (u32, u32, u32) {
     match move_state {
-        MoveState::NoMove =>        (0, 0, 0),
-        MoveState::Wolf(coord) =>   (1, coord.x as u32, coord.y as u32),
-        MoveState::Sheep(coord) =>  (2, coord.x as u32, coord.y as u32),
+        MoveState::NoMove => (0, 0, 0),
+        MoveState::Wolf(coord) => (1, coord.x as u32, coord.y as u32),
+        MoveState::Sheep(coord) => (2, coord.x as u32, coord.y as u32),
     }
 }
 
@@ -195,8 +188,12 @@ fn num_to_move_state(move_state: (u32, u32, u32)) -> ah::Result<MoveState> {
         (0, _, _) => Ok(MoveState::NoMove),
         (1, x, y) => Ok(MoveState::Wolf(coord!(x as i16, y as i16))),
         (2, x, y) => Ok(MoveState::Sheep(coord!(x as i16, y as i16))),
-        (a, b, c) => Err(ah::format_err!("Unknown move state values: {} {} {}",
-                                         a, b, c)),
+        (a, b, c) => Err(ah::format_err!(
+            "Unknown move state values: {} {} {}",
+            a,
+            b,
+            c
+        )),
     }
 }
 
@@ -231,48 +228,43 @@ enum ValidationResult {
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct Stats {
-    pub wolves:         u8,
-    pub sheep:          u8,
+    pub wolves: u8,
+    pub sheep: u8,
     pub sheep_captured: u8,
 }
 
 pub struct GameState {
-    player_mode:        PlayerMode,
-    player_name:        String,
-    room_player_list:   PlayerList,
-    room_list:          Vec<String>,
+    player_mode: PlayerMode,
+    player_name: String,
+    room_player_list: PlayerList,
+    room_list: Vec<String>,
 
-    fields:             [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
-    moving:             MoveState,
-    i_am_moving:        bool,
-    stats:              Stats,
-    turn:               Turn,
-    just_captured:      Option<Coord>,
-    orig_sheep_count:   u8,
-    recorder:           Recorder,
+    fields: [[FieldState; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
+    moving: MoveState,
+    i_am_moving: bool,
+    stats: Stats,
+    turn: Turn,
+    just_captured: Option<Coord>,
+    orig_sheep_count: u8,
+    recorder: Recorder,
 
-    client:             Option<Client>,
-    client_addr:        Option<String>,
-    joined_room:        Option<String>,
-    say_deque:          VecDeque<String>,
+    client: Option<Client>,
+    client_addr: Option<String>,
+    joined_room: Option<String>,
+    say_deque: VecDeque<String>,
 }
 
 impl GameState {
     /// Construct a new game state.
-    pub fn new(player_mode:         PlayerMode,
-               player_name:         Option<String>)
-               -> ah::Result<GameState> {
-
+    pub fn new(player_mode: PlayerMode, player_name: Option<String>) -> ah::Result<GameState> {
         let fields = [[FieldState::Unused; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
         let stats = Stats {
-            wolves:         0,
-            sheep:          0,
+            wolves: 0,
+            sheep: 0,
             sheep_captured: 0,
         };
-        let room_player_list = PlayerList::new(vec![
-            Player::new("Player".to_string(),
-                        player_mode,
-                        true)]);
+        let room_player_list =
+            PlayerList::new(vec![Player::new("Player".to_string(), player_mode, true)]);
         let player_name = match player_name {
             Some(n) => n,
             None => format!("Player-{}", random_alphanum(5)),
@@ -281,19 +273,19 @@ impl GameState {
             player_mode,
             player_name,
             room_player_list,
-            room_list:          vec![],
+            room_list: vec![],
             fields,
-            moving:             MoveState::NoMove,
-            i_am_moving:        false,
+            moving: MoveState::NoMove,
+            i_am_moving: false,
             stats,
-            turn:               Turn::Sheep,
-            just_captured:      None,
-            orig_sheep_count:   0,
-            recorder:           Recorder::new(),
-            client:             None,
-            client_addr:        None,
-            joined_room:        None,
-            say_deque:          VecDeque::new(),
+            turn: Turn::Sheep,
+            just_captured: None,
+            orig_sheep_count: 0,
+            recorder: Recorder::new(),
+            client: None,
+            client_addr: None,
+            joined_room: None,
+            say_deque: VecDeque::new(),
         };
         game.reset_game(true);
         game.print_turn();
@@ -302,7 +294,10 @@ impl GameState {
 
     pub fn get_recorder(&mut self) -> &Recorder {
         if let Err(e) = self.client_update_recorder() {
-            Print::error(&format!("Failed to fetch recorder state from server: {}", e));
+            Print::error(&format!(
+                "Failed to fetch recorder state from server: {}",
+                e
+            ));
         }
         &self.recorder
     }
@@ -319,10 +314,8 @@ impl GameState {
             let y = coord.y as usize;
             self.fields[y][x] = INITIAL_STATE[y][x];
             match self.fields[y][x] {
-                FieldState::Sheep =>
-                    self.orig_sheep_count += 1,
-                FieldState::Wolf | FieldState::Unused | FieldState::Empty =>
-                    (),
+                FieldState::Sheep => self.orig_sheep_count += 1,
+                FieldState::Wolf | FieldState::Unused | FieldState::Empty => (),
             }
         }
 
@@ -369,12 +362,9 @@ impl GameState {
             let x = coord.x as usize;
             let y = coord.y as usize;
             match self.fields[y][x] {
-                FieldState::Wolf =>
-                    self.stats.wolves += 1,
-                FieldState::Sheep =>
-                    self.stats.sheep += 1,
-                FieldState::Unused | FieldState::Empty =>
-                    (),
+                FieldState::Wolf => self.stats.wolves += 1,
+                FieldState::Sheep => self.stats.sheep += 1,
+                FieldState::Unused | FieldState::Empty => (),
             }
         }
         self.stats.sheep_captured = self.orig_sheep_count - self.stats.sheep;
@@ -410,9 +400,8 @@ impl GameState {
                             ValidationResult::Invalid | ValidationResult::Valid => (),
                         }
                     }
-                },
-                FieldState::Sheep | FieldState::Unused | FieldState::Empty => {
-                },
+                }
+                FieldState::Sheep | FieldState::Unused | FieldState::Empty => {}
             }
             if can_move {
                 break;
@@ -436,7 +425,7 @@ impl GameState {
                         if self.fields[y][x] != FieldState::Sheep {
                             sheep_win = false;
                         }
-                    },
+                    }
                 }
             }
             if sheep_win || self.wolves_are_stuck() {
@@ -480,17 +469,17 @@ impl GameState {
     /// Capture one token at pos.
     fn capture(&mut self, _from_pos: Coord, to_pos: Coord, capture_pos: Coord) {
         match self.get_field_state(capture_pos) {
-            FieldState::Unused | FieldState::Empty =>
-                Print::error("Internal error: Cannot capture empty fields."),
-            FieldState::Wolf =>
-                Print::error("Internal error: Cannot capture wolves."),
+            FieldState::Unused | FieldState::Empty => {
+                Print::error("Internal error: Cannot capture empty fields.")
+            }
+            FieldState::Wolf => Print::error("Internal error: Cannot capture wolves."),
             FieldState::Sheep => {
                 self.stats.sheep -= 1;
                 self.stats.sheep_captured += 1;
                 self.just_captured = Some(to_pos);
                 self.set_field_state(capture_pos, FieldState::Empty);
                 Print::debug(&format!("Captured sheep at {}", capture_pos));
-            },
+            }
         }
     }
 
@@ -506,36 +495,32 @@ impl GameState {
         // Check if from position has a token.
         let from_state = self.get_field_state(from_pos);
         match from_state {
-            FieldState::Unused | FieldState::Empty =>
-                return ValidationResult::Invalid,
-            FieldState::Wolf | FieldState::Sheep =>
-                (),
+            FieldState::Unused | FieldState::Empty => return ValidationResult::Invalid,
+            FieldState::Wolf | FieldState::Sheep => (),
         }
         // Check if to position has no token.
         let to_state = self.get_field_state(to_pos);
         match to_state {
-            FieldState::Unused | FieldState::Wolf | FieldState::Sheep =>
-                return ValidationResult::Invalid,
-            FieldState::Empty =>
-                (),
+            FieldState::Unused | FieldState::Wolf | FieldState::Sheep => {
+                return ValidationResult::Invalid;
+            }
+            FieldState::Empty => (),
         }
 
         // Check if the player is allowed to move this token.
         match self.player_mode {
-            PlayerMode::Spectator =>
-                return ValidationResult::Invalid,
-            PlayerMode::Both =>
-                (),
+            PlayerMode::Spectator => return ValidationResult::Invalid,
+            PlayerMode::Both => (),
             PlayerMode::Wolf => {
                 if from_state != FieldState::Wolf {
                     return ValidationResult::Invalid;
                 }
-            },
+            }
             PlayerMode::Sheep => {
                 if from_state != FieldState::Sheep {
                     return ValidationResult::Invalid;
                 }
-            },
+            }
         }
 
         // Check if this is our turn.
@@ -544,12 +529,12 @@ impl GameState {
                 if from_state != FieldState::Sheep {
                     return ValidationResult::Invalid;
                 }
-            },
+            }
             Turn::Wolf => {
                 if from_state != FieldState::Wolf {
                     return ValidationResult::Invalid;
                 }
-            },
+            }
         }
 
         let distx = to_pos.x as isize - from_pos.x as isize;
@@ -562,8 +547,7 @@ impl GameState {
 
         let mut result = ValidationResult::Invalid;
 
-        if from_state == FieldState::Sheep &&
-           to_pos.y > from_pos.y {
+        if from_state == FieldState::Sheep && to_pos.y > from_pos.y {
             // Invalid sheep backward move.
         } else if from_pos.x != to_pos.x && from_pos.y != to_pos.y {
             // Diagonal move.
@@ -579,27 +563,31 @@ impl GameState {
                             result = ValidationResult::ValidCapture(center_pos);
                         }
                     }
-                } else if (from_pos == coord!(1, 1) && to_pos == coord!(2, 0)) ||
-                          (from_pos == coord!(3, 1) && to_pos == coord!(2, 0)) ||
-                          (from_pos == coord!(2, 0) && to_pos == coord!(1, 1)) ||
-                          (from_pos == coord!(2, 0) && to_pos == coord!(3, 1)) {
+                } else if (from_pos == coord!(1, 1) && to_pos == coord!(2, 0))
+                    || (from_pos == coord!(3, 1) && to_pos == coord!(2, 0))
+                    || (from_pos == coord!(2, 0) && to_pos == coord!(1, 1))
+                    || (from_pos == coord!(2, 0) && to_pos == coord!(3, 1))
+                {
                     // Wolf move to/from barn top.
                     result = ValidationResult::Valid;
-                } else if (from_pos == coord!(1, 2) && to_pos == coord!(2, 0)) ||
-                          (from_pos == coord!(2, 0) && to_pos == coord!(1, 2)) {
+                } else if (from_pos == coord!(1, 2) && to_pos == coord!(2, 0))
+                    || (from_pos == coord!(2, 0) && to_pos == coord!(1, 2))
+                {
                     if self.get_field_state(coord!(1, 1)) == FieldState::Sheep {
                         // Captured at top-left corner of barn.
                         result = ValidationResult::ValidCapture(coord!(1, 1));
                     }
-                } else if (from_pos == coord!(3, 2) && to_pos == coord!(2, 0)) ||
-                          (from_pos == coord!(2, 0) && to_pos == coord!(3, 2)) {
+                } else if (from_pos == coord!(3, 2) && to_pos == coord!(2, 0))
+                    || (from_pos == coord!(2, 0) && to_pos == coord!(3, 2))
+                {
                     if self.get_field_state(coord!(3, 1)) == FieldState::Sheep {
                         // Captured at top-right corner of barn.
                         result = ValidationResult::ValidCapture(coord!(3, 1));
                     }
                 }
-            } else if from_state == FieldState::Sheep &&
-                      (from_pos == coord!(1, 1) || from_pos == coord!(3, 1)) {
+            } else if from_state == FieldState::Sheep
+                && (from_pos == coord!(1, 1) || from_pos == coord!(3, 1))
+            {
                 // Sheep move to barn top.
                 result = ValidationResult::Valid;
             }
@@ -608,8 +596,7 @@ impl GameState {
             if distx.abs() == 1 {
                 result = ValidationResult::Valid;
             } else if distx.abs() == 2 {
-                if from_state == FieldState::Wolf &&
-                   is_opposite_token(from_state, center_state) {
+                if from_state == FieldState::Wolf && is_opposite_token(from_state, center_state) {
                     // Captured.
                     result = ValidationResult::ValidCapture(center_pos);
                 }
@@ -619,13 +606,13 @@ impl GameState {
             if disty.abs() == 1 {
                 result = ValidationResult::Valid;
             } else if disty.abs() == 2 {
-                if from_state == FieldState::Wolf &&
-                   is_opposite_token(from_state, center_state) {
+                if from_state == FieldState::Wolf && is_opposite_token(from_state, center_state) {
                     // Captured.
                     result = ValidationResult::ValidCapture(center_pos);
                 }
             }
-        } else { // Can never happen.
+        } else {
+            // Can never happen.
             Print::error("Internal error: validate_move() invalid state.");
         }
 
@@ -642,7 +629,7 @@ impl GameState {
         match self.turn {
             Turn::Sheep => {
                 self.turn = Turn::Wolf;
-            },
+            }
             Turn::Wolf => {
                 // The next turn is sheep, except if a wolf has just captured a sheep
                 // and it can capture another one.
@@ -654,14 +641,13 @@ impl GameState {
                             ValidationResult::ValidCapture(_) => {
                                 Print::debug("Wolf can capture more sheep.");
                                 more = true;
-                            },
-                            ValidationResult::Invalid | ValidationResult::Valid =>
-                                (),
+                            }
+                            ValidationResult::Invalid | ValidationResult::Valid => (),
                         }
                     }
                 }
                 self.turn = if more { Turn::Wolf } else { Turn::Sheep };
-            },
+            }
         }
         self.just_captured = None;
         self.print_turn();
@@ -670,13 +656,18 @@ impl GameState {
     /// Start a move operation.
     pub fn move_pick(&mut self, pos: Coord) -> ah::Result<()> {
         if pos.x >= BOARD_WIDTH || pos.y >= BOARD_HEIGHT {
-            return Err(ah::format_err!("move_pick: Coordinates ({}) out of bounds.", pos));
+            return Err(ah::format_err!(
+                "move_pick: Coordinates ({}) out of bounds.",
+                pos
+            ));
         }
         if self.moving != MoveState::NoMove {
             return Err(ah::format_err!("move_pick: Already moving."));
         }
         if self.player_mode == PlayerMode::Spectator {
-            return Err(ah::format_err!("move_pick: Player is spectator. Not allowed to move."));
+            return Err(ah::format_err!(
+                "move_pick: Player is spectator. Not allowed to move."
+            ));
         }
         let win_state = self.get_win_state();
         if win_state != WinState::Undecided {
@@ -687,19 +678,19 @@ impl GameState {
         let result = match self.get_field_state(pos) {
             FieldState::Unused | FieldState::Empty => {
                 Err(ah::format_err!("move_pick: Move from empty field."))
-            },
+            }
             FieldState::Wolf => {
                 self.client_send_move_pick(pos, MSG_MOVE_TOKEN_WOLF)?;
                 self.moving = MoveState::Wolf(pos);
                 self.set_field_state(pos, FieldState::Wolf);
                 Ok(())
-            },
+            }
             FieldState::Sheep => {
                 self.client_send_move_pick(pos, MSG_MOVE_TOKEN_SHEEP)?;
                 self.moving = MoveState::Sheep(pos);
                 self.set_field_state(pos, FieldState::Sheep);
                 Ok(())
-            },
+            }
         };
         self.i_am_moving = result.is_ok();
         result
@@ -708,16 +699,15 @@ impl GameState {
     /// Actually commit the move-put.
     fn do_move_put(&mut self, to_pos: Coord, captured: bool) {
         match self.moving {
-            MoveState::NoMove =>
-                Print::error("Internal error: Invalid move source."),
+            MoveState::NoMove => Print::error("Internal error: Invalid move source."),
             MoveState::Wolf(from_pos) => {
                 self.set_field_state(to_pos, FieldState::Wolf);
                 self.set_field_state(from_pos, FieldState::Empty);
-            },
+            }
             MoveState::Sheep(from_pos) => {
                 self.set_field_state(to_pos, FieldState::Sheep);
                 self.set_field_state(from_pos, FieldState::Empty);
-            },
+            }
         }
         self.recalc_stats();
         self.next_turn();
@@ -737,38 +727,34 @@ impl GameState {
             return Err(ah::format_err!("move_put: Coordinates out of bounds."));
         }
         if self.player_mode == PlayerMode::Spectator {
-            return Err(ah::format_err!("move_put: Player is spectator. Not allowed to move."));
+            return Err(ah::format_err!(
+                "move_put: Player is spectator. Not allowed to move."
+            ));
         }
 
         let (from_pos, token_id) = match self.moving {
-            MoveState::NoMove =>
-                return Err(ah::format_err!("move_put: Not moving.")),
+            MoveState::NoMove => return Err(ah::format_err!("move_put: Not moving.")),
             MoveState::Wolf(p) => (p, MSG_MOVE_TOKEN_WOLF),
             MoveState::Sheep(p) => (p, MSG_MOVE_TOKEN_SHEEP),
         };
 
         // Try to put the token. This might fail.
         let result = match self.get_field_state(pos) {
-            FieldState::Unused |
-            FieldState::Wolf |
-            FieldState::Sheep => {
+            FieldState::Unused | FieldState::Wolf | FieldState::Sheep => {
                 Err(ah::format_err!("move_put: Field occupied."))
-            },
-            FieldState::Empty => {
-                match self.validate_move(from_pos, pos) {
-                    ValidationResult::Invalid =>
-                        Err(ah::format_err!("move_put: Invalid move.")),
-                    ValidationResult::Valid => {
-                        self.client_send_move_put(pos, token_id)?;
-                        self.do_move_put(pos, false);
-                        Ok(())
-                    },
-                    ValidationResult::ValidCapture(capture_pos) => {
-                        self.client_send_move_put(pos, token_id)?;
-                        self.capture(from_pos, pos, capture_pos);
-                        self.do_move_put(pos, true);
-                        Ok(())
-                    },
+            }
+            FieldState::Empty => match self.validate_move(from_pos, pos) {
+                ValidationResult::Invalid => Err(ah::format_err!("move_put: Invalid move.")),
+                ValidationResult::Valid => {
+                    self.client_send_move_put(pos, token_id)?;
+                    self.do_move_put(pos, false);
+                    Ok(())
+                }
+                ValidationResult::ValidCapture(capture_pos) => {
+                    self.client_send_move_put(pos, token_id)?;
+                    self.capture(from_pos, pos, capture_pos);
+                    self.do_move_put(pos, true);
+                    Ok(())
                 }
             },
         };
@@ -786,20 +772,18 @@ impl GameState {
         match self.moving {
             MoveState::NoMove => {
                 self.i_am_moving = false;
-            },
-            MoveState::Wolf(coord) |
-            MoveState::Sheep(coord) => {
+            }
+            MoveState::Wolf(coord) | MoveState::Sheep(coord) => {
                 self.moving = MoveState::NoMove;
                 self.i_am_moving = false;
                 self.client_send_move_abort(coord).ok();
-            },
+            }
         }
     }
 
     pub fn make_state_message(&self) -> MsgGameState {
-        let mut fields = [[field_state_to_num(FieldState::Unused);
-                           BOARD_WIDTH as usize];
-                          BOARD_HEIGHT as usize];
+        let mut fields =
+            [[field_state_to_num(FieldState::Unused); BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
         for coord in BoardIterator::new() {
             let x = coord.x as usize;
             let y = coord.y as usize;
@@ -810,11 +794,11 @@ impl GameState {
         MsgGameState::new(fields, moving_state, moving_x, moving_y, turn)
     }
 
-    pub fn read_state_message(&mut self,
-                              msg: &MsgGameState,
-                              force: bool) -> ah::Result<bool> {
+    pub fn read_state_message(&mut self, msg: &MsgGameState, force: bool) -> ah::Result<bool> {
         if !force && self.player_mode == PlayerMode::Spectator {
-            return Err(ah::format_err!("Player is spectator. Not allowed to load game state."));
+            return Err(ah::format_err!(
+                "Player is spectator. Not allowed to load game state."
+            ));
         }
 
         let mut changed = false;
@@ -827,7 +811,7 @@ impl GameState {
                     Err(e) => {
                         Print::error(&format!("Received invalid field state: {}", e));
                         self.fields[y][x]
-                    },
+                    }
                 };
                 if field != self.fields[y][x] {
                     self.fields[y][x] = field;
@@ -840,7 +824,7 @@ impl GameState {
                 Err(e) => {
                     Print::error(&format!("Received invalid moving state: {}", e));
                     self.moving
-                },
+                }
             };
             if moving != self.moving {
                 self.moving = moving;
@@ -852,7 +836,7 @@ impl GameState {
                 Err(e) => {
                     Print::error(&format!("Received invalid turn state: {}", e));
                     self.turn
-                },
+                }
             };
             if turn != self.turn {
                 self.turn = turn;
@@ -886,20 +870,22 @@ impl GameState {
     fn client_handle_rx_msg_roomlist(&mut self, msg: &MsgRoomList) {
         let total_count = msg.get_total_count();
         if total_count > MAX_ROOMS as u32 {
-            Print::error(&format!("Received RoomList with too many rooms: {}",
-                                  total_count));
+            Print::error(&format!(
+                "Received RoomList with too many rooms: {}",
+                total_count
+            ));
             return;
         }
 
-        self.room_list.resize_with(total_count as usize,
-                                   || "".to_string());
+        self.room_list
+            .resize_with(total_count as usize, || "".to_string());
 
         let room_name = match msg.get_room_name() {
             Ok(n) => n,
             Err(e) => {
                 Print::error(&format!("Received RoomList with invalid room name: {}", e));
                 return;
-            },
+            }
         };
 
         let index = msg.get_index() as usize;
@@ -914,30 +900,37 @@ impl GameState {
     fn client_handle_rx_msg_playerlist(&mut self, msg: &MsgPlayerList) {
         let total_count = msg.get_total_count();
         if total_count > MAX_PLAYERS as u32 {
-            Print::error(&format!("Received PlayerList with too many players: {}",
-                                  total_count));
+            Print::error(&format!(
+                "Received PlayerList with too many players: {}",
+                total_count
+            ));
             return;
         }
 
-        self.room_player_list.resize(total_count as usize,
-                                     || Player::new("<unknown>".to_string(),
-                                                    PlayerMode::Spectator,
-                                                    false));
+        self.room_player_list.resize(total_count as usize, || {
+            Player::new("<unknown>".to_string(), PlayerMode::Spectator, false)
+        });
 
         let player_name = match msg.get_player_name() {
             Ok(n) => n,
             Err(e) => {
-                Print::error(&format!("Received PlayerList with invalid player name: {}", e));
+                Print::error(&format!(
+                    "Received PlayerList with invalid player name: {}",
+                    e
+                ));
                 return;
             }
         };
         let player_mode = match num_to_player_mode(msg.get_player_mode()) {
             Ok(m) => m,
             Err(e) => {
-                Print::error(&format!("Received PlayerList with invalid player mode '{}': {}",
-                                      msg.get_player_mode(), e));
+                Print::error(&format!(
+                    "Received PlayerList with invalid player mode '{}': {}",
+                    msg.get_player_mode(),
+                    e
+                ));
                 return;
-            },
+            }
         };
         let is_self = player_name == self.player_name;
 
@@ -947,16 +940,12 @@ impl GameState {
             return;
         }
 
-        self.room_player_list.set_player(index,
-                                         Player::new(player_name,
-                                                     player_mode,
-                                                     is_self));
+        self.room_player_list
+            .set_player(index, Player::new(player_name, player_mode, is_self));
     }
 
     fn client_handle_rx_msg_say(&mut self, msg: &MsgSay) {
-        let text = format!("[{}]: {}",
-                           msg.get_player_name(),
-                           msg.get_text());
+        let text = format!("[{}]: {}", msg.get_player_name(), msg.get_text());
         let text = text.replace("\n", "\n\t").replace("\r", "");
         self.say_deque.push_back(text);
         if self.say_deque.len() > SAY_DEQUE_MAX_LEN {
@@ -970,37 +959,37 @@ impl GameState {
             let message = message.get_message();
 
             match message {
-                MsgType::Nop(_) |
-                MsgType::Result(_) |
-                MsgType::Ping(_) |
-                MsgType::Pong(_) |
-                MsgType::Join(_) |
-                MsgType::Leave(_) |
-                MsgType::Reset(_) |
-                MsgType::ReqGameState(_) |
-                MsgType::ReqRoomList(_) |
-                MsgType::ReqPlayerList(_) |
-                MsgType::ReqRecord(_) |
-                MsgType::Record(_) |
-                MsgType::Move(_) => {
+                MsgType::Nop(_)
+                | MsgType::Result(_)
+                | MsgType::Ping(_)
+                | MsgType::Pong(_)
+                | MsgType::Join(_)
+                | MsgType::Leave(_)
+                | MsgType::Reset(_)
+                | MsgType::ReqGameState(_)
+                | MsgType::ReqRoomList(_)
+                | MsgType::ReqPlayerList(_)
+                | MsgType::ReqRecord(_)
+                | MsgType::Record(_)
+                | MsgType::Move(_) => {
                     // Ignore.
-                },
+                }
                 MsgType::GameState(msg) => {
                     if self.joined_room.is_some() && self.client_handle_rx_msg_gamestate(msg) {
                         redraw = true;
                     }
-                },
+                }
                 MsgType::RoomList(msg) => {
                     self.client_handle_rx_msg_roomlist(msg);
-                },
+                }
                 MsgType::PlayerList(msg) => {
                     if self.joined_room.is_some() {
                         self.client_handle_rx_msg_playerlist(msg);
                     }
-                },
+                }
                 MsgType::Say(msg) => {
                     self.client_handle_rx_msg_say(msg);
-                },
+                }
             }
         }
 
@@ -1011,8 +1000,9 @@ impl GameState {
     pub fn poll_server(&mut self) -> bool {
         let mut redraw = false;
         loop {
-            if let Some(client) = self.client.as_mut() &&
-               let Some(messages) = client.poll() {
+            if let Some(client) = self.client.as_mut()
+                && let Some(messages) = client.poll()
+            {
                 redraw |= self.client_handle_rx_messages(messages);
                 continue;
             }
@@ -1033,15 +1023,15 @@ impl GameState {
         Ok(())
     }
 
-    fn do_join_room(&mut self,
-                    room_name: Option<&str>,
-                    player_name: Option<&str>,
-                    player_mode: Option<PlayerMode>) -> ah::Result<()> {
+    fn do_join_room(
+        &mut self,
+        room_name: Option<&str>,
+        player_name: Option<&str>,
+        player_mode: Option<PlayerMode>,
+    ) -> ah::Result<()> {
         let room_name = match room_name {
-            Some(room_name) =>
-                Some(room_name.to_string()),
-            None =>
-                self.joined_room.as_ref().cloned(),
+            Some(room_name) => Some(room_name.to_string()),
+            None => self.joined_room.as_ref().cloned(),
         };
 
         let player_name = match player_name {
@@ -1056,17 +1046,17 @@ impl GameState {
 
         let old_joined_room = self.joined_room.take();
 
-        if let Some(client) = self.client.as_mut() && let Some(room_name) = room_name {
-            match client.send_join(&room_name,
-                                    player_name,
-                                    player_mode) {
+        if let Some(client) = self.client.as_mut()
+            && let Some(room_name) = room_name
+        {
+            match client.send_join(&room_name, player_name, player_mode) {
                 Ok(_) => {
                     self.joined_room = Some(room_name);
-                },
+                }
                 Err(e) => {
                     self.joined_room = old_joined_room;
                     return Err(e);
-                },
+                }
             }
         }
 
@@ -1079,7 +1069,9 @@ impl GameState {
     /// Join a room on the server.
     pub fn client_join_room(&mut self, room_name: &str) -> ah::Result<()> {
         if self.client.is_none() {
-            return Err(ah::format_err!("Cannot join room. Not connected to a server."));
+            return Err(ah::format_err!(
+                "Cannot join room. Not connected to a server."
+            ));
         }
         Print::info(&format!("Joining room '{}' ...", room_name));
         self.do_join_room(Some(room_name), None, None)?;
@@ -1122,18 +1114,19 @@ impl GameState {
     }
 
     fn client_send_reset_game(&mut self) {
-        if let Some(client) = self.client.as_mut() && let Err(e) = client.send_reset() {
+        if let Some(client) = self.client.as_mut()
+            && let Err(e) = client.send_reset()
+        {
             Print::error(&format!("Failed to game-reset: {}", e));
         }
     }
 
     /// Send the move-pick to the server.
     fn client_send_move_pick(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
-        if let Some(client) = self.client.as_mut() &&
-           let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PICK,
-                                                   token_id,
-                                                   pos.x as u32,
-                                                   pos.y as u32) {
+        if let Some(client) = self.client.as_mut()
+            && let Err(e) =
+                client.send_move_token(MSG_MOVE_ACTION_PICK, token_id, pos.x as u32, pos.y as u32)
+        {
             let msg = format!("Move-pick failed on server: {}", e);
             Print::error(&msg);
             return Err(ah::format_err!("{}", msg));
@@ -1143,11 +1136,10 @@ impl GameState {
 
     /// Send the move-put to the server.
     fn client_send_move_put(&mut self, pos: Coord, token_id: u32) -> ah::Result<()> {
-        if let Some(client) = self.client.as_mut() &&
-            let Err(e) = client.send_move_token(MSG_MOVE_ACTION_PUT,
-                                                   token_id,
-                                                   pos.x as u32,
-                                                   pos.y as u32) {
+        if let Some(client) = self.client.as_mut()
+            && let Err(e) =
+                client.send_move_token(MSG_MOVE_ACTION_PUT, token_id, pos.x as u32, pos.y as u32)
+        {
             let msg = format!("Move failed on server: {}", e);
             Print::error(&msg);
             return Err(ah::format_err!("{}", msg));
@@ -1157,11 +1149,14 @@ impl GameState {
 
     /// Send the move-abort to the server.
     fn client_send_move_abort(&mut self, pos: Coord) -> ah::Result<()> {
-        if let Some(client) = self.client.as_mut() &&
-            let Err(e) = client.send_move_token(MSG_MOVE_ACTION_ABORT,
-                                                   MSG_MOVE_TOKEN_CURRENT,
-                                                   pos.x as u32,
-                                                   pos.y as u32) {
+        if let Some(client) = self.client.as_mut()
+            && let Err(e) = client.send_move_token(
+                MSG_MOVE_ACTION_ABORT,
+                MSG_MOVE_TOKEN_CURRENT,
+                pos.x as u32,
+                pos.y as u32,
+            )
+        {
             Print::error(&format!("Move-abort failed on server: {}", e));
         }
         Ok(())
@@ -1209,19 +1204,19 @@ impl GameState {
         match msg.get_action() {
             (MSG_MOVE_ACTION_PICK, x, y) => {
                 self.move_pick(coord!(x as i16, y as i16))?;
-            },
+            }
             (MSG_MOVE_ACTION_MOVE, _x, _y) => {
                 //TODO
-            },
+            }
             (MSG_MOVE_ACTION_PUT, x, y) => {
                 self.move_put(coord!(x as i16, y as i16))?;
-            },
+            }
             (MSG_MOVE_ACTION_ABORT, _x, _y) => {
                 self.move_abort();
-            },
+            }
             (action, _, _) => {
                 Print::error(&format!("Received invalid move action: {}", action));
-            },
+            }
         }
         Ok(())
     }

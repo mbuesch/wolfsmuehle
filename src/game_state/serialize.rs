@@ -17,29 +17,27 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
-use anyhow as ah;
+use super::GameState;
 use crate::net::protocol::{Message, MsgType, message_from_bytes};
+use anyhow as ah;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::Path;
-use super::GameState;
 
 impl GameState {
     pub fn save_game(&self, filename: &Path) -> ah::Result<()> {
         let mut file = OpenOptions::new()
-                            .write(true)
-                            .create(true)
-                            .truncate(true)
-                            .open(filename)?;
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(filename)?;
         file.write_all(&self.serialize()?)?;
         file.sync_all()?;
         Ok(())
     }
 
     pub fn load_game(&mut self, filename: &Path) -> ah::Result<()> {
-        let mut file = OpenOptions::new()
-                            .read(true)
-                            .open(filename)?;
+        let mut file = OpenOptions::new().read(true).open(filename)?;
         let mut buf = vec![];
         file.read_to_end(&mut buf)?;
         self.deserialize(&buf)?;
@@ -65,8 +63,12 @@ impl GameState {
                 // Check if this is a supported message.
                 match msg.get_message() {
                     MsgType::GameState(_) => (),
-                    invalid => return Err(ah::format_err!(
-                        "File data contains unsupported packet {:?}", invalid)),
+                    invalid => {
+                        return Err(ah::format_err!(
+                            "File data contains unsupported packet {:?}",
+                            invalid
+                        ));
+                    }
                 }
 
                 messages.push(msg);
@@ -75,7 +77,9 @@ impl GameState {
             }
         }
         if messages.is_empty() {
-            return Err(ah::format_err!("File data does not contain valid game state."));
+            return Err(ah::format_err!(
+                "File data does not contain valid game state."
+            ));
         }
 
         // Set the local game state to the message contents.

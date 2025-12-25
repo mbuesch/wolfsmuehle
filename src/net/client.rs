@@ -17,53 +17,28 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+use crate::net::protocol::{
+    MSG_BUFFER_SIZE, Message, MsgJoin, MsgLeave, MsgMove, MsgNop, MsgPing, MsgRecord,
+    MsgReqGameState, MsgReqPlayerList, MsgReqRecord, MsgReqRoomList, MsgReset, MsgSay, MsgType,
+    buffer_skip, message_from_bytes, net_sync,
+};
+use crate::player::{PlayerMode, player_mode_to_num};
+use crate::print::Print;
 use anyhow as ah;
+use itertools::Itertools;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{
-    Read,
-    Write,
-};
-use std::net::{
-    Shutdown,
-    TcpStream,
-    ToSocketAddrs,
-};
+use std::io::{Read, Write};
+use std::net::{Shutdown, TcpStream, ToSocketAddrs};
 use std::time::Instant;
-use crate::player::{
-    PlayerMode,
-    player_mode_to_num,
-};
-use crate::print::Print;
-use crate::net::protocol::{
-    MSG_BUFFER_SIZE,
-    Message,
-    MsgJoin,
-    MsgLeave,
-    MsgMove,
-    MsgNop,
-    MsgPing,
-    MsgRecord,
-    MsgReqGameState,
-    MsgReqPlayerList,
-    MsgReqRecord,
-    MsgReqRoomList,
-    MsgReset,
-    MsgSay,
-    MsgType,
-    buffer_skip,
-    message_from_bytes,
-    net_sync,
-};
-use itertools::Itertools;
 
 const DEBUG_RAW: bool = false;
 
 pub struct Client {
-    stream:         TcpStream,
-    sequence:       u32,
-    rx_queue:       Option<Vec<u8>>,
-    sync:           bool,
+    stream: TcpStream,
+    sequence: u32,
+    rx_queue: Option<Vec<u8>>,
+    sync: bool,
 }
 
 impl Client {
@@ -73,9 +48,9 @@ impl Client {
         stream.set_nodelay(true)?;
         Ok(Client {
             stream,
-            sequence:       0,
-            rx_queue:       None,
-            sync:           false,
+            sequence: 0,
+            rx_queue: None,
+            sync: false,
         })
     }
 
@@ -97,11 +72,9 @@ impl Client {
     }
 
     /// Wait for a reply from the server.
-    fn wait_for_reply<F>(&mut self,
-                         name: &str,
-                         timeout: f32,
-                         check_match: F) -> ah::Result<()>
-        where F: Fn(&Box<dyn Message>) -> Option<ah::Result<()>>
+    fn wait_for_reply<F>(&mut self, name: &str, timeout: f32, check_match: F) -> ah::Result<()>
+    where
+        F: Fn(&Box<dyn Message>) -> Option<ah::Result<()>>,
     {
         let begin = Instant::now();
         let timeout_ms = (timeout * 1000.0).ceil() as u128;
@@ -110,8 +83,7 @@ impl Client {
         let mut ret = Err(ah::format_err!("Timeout waiting for {} reply.", name));
         let mut exit = false;
 
-        while Instant::now().duration_since(begin).as_millis() < timeout_ms &&
-              !exit {
+        while Instant::now().duration_since(begin).as_millis() < timeout_ms && !exit {
             if let Some(messages) = self.poll() {
                 for msg in messages {
                     match check_match(&msg) {
@@ -120,16 +92,18 @@ impl Client {
                             ret = r;
                             exit = true;
                             break;
-                        },
+                        }
                         None => {
                             backlog.append(&mut msg.to_bytes());
-                        },
+                        }
                     }
                 }
             }
         }
-        Print::debug(&format!("net/client: Wait blocked {} ms.",
-                              Instant::now().duration_since(begin).as_millis()));
+        Print::debug(&format!(
+            "net/client: Wait blocked {} ms.",
+            Instant::now().duration_since(begin).as_millis()
+        ));
 
         if !backlog.is_empty() {
             if let Some(mut q) = self.rx_queue.take() {
@@ -140,27 +114,27 @@ impl Client {
         ret
     }
 
-    pub fn send_msg_wait_for_ok(&mut self,
-                                name: &str,
-                                timeout: f32,
-                                msg: &mut impl Message) -> ah::Result<()> {
+    pub fn send_msg_wait_for_ok(
+        &mut self,
+        name: &str,
+        timeout: f32,
+        msg: &mut impl Message,
+    ) -> ah::Result<()> {
         self.send_msg(msg)?;
-        self.wait_for_reply(name, timeout,
-            |m| {
-                match m.get_message() {
-                    MsgType::Result(result) if result.is_in_reply_to(msg) => {
-                        if result.is_ok() {
-                            Some(Ok(()))
-                        } else {
-                            Some(Err(ah::format_err!("Server replied not-Ok ({}): {}.",
-                                                     result.get_result_code(),
-                                                     result.get_text())))
-                        }
-                    }
-                    _ => None,
+        self.wait_for_reply(name, timeout, |m| match m.get_message() {
+            MsgType::Result(result) if result.is_in_reply_to(msg) => {
+                if result.is_ok() {
+                    Some(Ok(()))
+                } else {
+                    Some(Err(ah::format_err!(
+                        "Server replied not-Ok ({}): {}.",
+                        result.get_result_code(),
+                        result.get_text()
+                    )))
                 }
             }
-        )?;
+            _ => None,
+        })?;
         Ok(())
     }
 
@@ -173,28 +147,25 @@ impl Client {
     /// Send a ping message to the server and wait for the pong response.
     pub fn send_ping(&mut self) -> ah::Result<()> {
         self.send_msg(&mut MsgPing::new())?;
-        self.wait_for_reply("ping", 3.0,
-            |m| {
-                match m.get_message() {
-                    MsgType::Pong(_) => Some(Ok(())),
-                    _ => None,
-                }
-            }
-        )?;
+        self.wait_for_reply("ping", 3.0, |m| match m.get_message() {
+            MsgType::Pong(_) => Some(Ok(())),
+            _ => None,
+        })?;
         Ok(())
     }
 
     /// Send a Join message to the server and wait for the result.
-    pub fn send_join(&mut self,
-                     room_name: &str,
-                     player_name: &str,
-                     player_mode: PlayerMode) -> ah::Result<()> {
+    pub fn send_join(
+        &mut self,
+        room_name: &str,
+        player_name: &str,
+        player_mode: PlayerMode,
+    ) -> ah::Result<()> {
         self.send_msg_wait_for_ok(
             "join",
             3.0,
-            &mut MsgJoin::new(room_name,
-                              player_name,
-                              player_mode_to_num(player_mode))?)?;
+            &mut MsgJoin::new(room_name, player_name, player_mode_to_num(player_mode))?,
+        )?;
         Ok(())
     }
 
@@ -236,24 +207,21 @@ impl Client {
         self.send_msg(&mut request)?;
         let ret = RefCell::new(HashMap::new());
         loop {
-            self.wait_for_reply("record", 1.0,
-                |msg| {
-                    match msg.get_message() {
-                        MsgType::Record(m) => {
-                            ret.borrow_mut().insert(m.get_index(), m.clone());
-                            Some(Ok(()))
-                        },
-                        MsgType::Result(m) if m.is_in_reply_to(&request) => {
-                            Some(Ok(()))
-                        },
-                        _ => None
-                    }
-                })?;
+            self.wait_for_reply("record", 1.0, |msg| match msg.get_message() {
+                MsgType::Record(m) => {
+                    ret.borrow_mut().insert(m.get_index(), m.clone());
+                    Some(Ok(()))
+                }
+                MsgType::Result(m) if m.is_in_reply_to(&request) => Some(Ok(())),
+                _ => None,
+            })?;
             let ret = ret.borrow();
             if !ret.is_empty() {
                 let count = ret.iter().next().unwrap().1.get_total_count();
                 if count > 0x1000 {
-                    return Err(ah::format_err!("Received MsgRecord with very big total_count."));
+                    return Err(ah::format_err!(
+                        "Received MsgRecord with very big total_count."
+                    ));
                 }
                 if ret.len() >= count as usize {
                     break;
@@ -264,29 +232,32 @@ impl Client {
         }
         MsgRecord::assemble_parts(
             ret.into_inner()
-            .iter()
-            .sorted_by(|a, b| Ord::cmp(a.0, b.0))
-            .map(|x| x.1.clone())
-            .collect())
+                .iter()
+                .sorted_by(|a, b| Ord::cmp(a.0, b.0))
+                .map(|x| x.1.clone())
+                .collect(),
+        )
     }
 
     /// Send a chat message to the server.
     pub fn send_chat_message(&mut self, text: &str) -> ah::Result<()> {
-        self.send_msg_wait_for_ok("say", 1.0,
-                                  &mut MsgSay::new("", text)?)?;
+        self.send_msg_wait_for_ok("say", 1.0, &mut MsgSay::new("", text)?)?;
         Ok(())
     }
 
     /// Send a MoveToken message to the server and wait for the result.
-    pub fn send_move_token(&mut self,
-                           action: u32,
-                           token: u32,
-                           coord_x: u32,
-                           coord_y: u32) -> ah::Result<()> {
+    pub fn send_move_token(
+        &mut self,
+        action: u32,
+        token: u32,
+        coord_x: u32,
+        coord_y: u32,
+    ) -> ah::Result<()> {
         self.send_msg_wait_for_ok(
             "move",
             1.0,
-            &mut MsgMove::new(action, token, coord_x, coord_y))?;
+            &mut MsgMove::new(action, token, coord_x, coord_y),
+        )?;
         Ok(())
     }
 
@@ -308,14 +279,14 @@ impl Client {
                     if DEBUG_RAW {
                         Print::debug(&format!("Client RX: {:?}", &rx_queue[data_len..]));
                     }
-                },
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     rx_queue.truncate(data_len);
-                },
+                }
                 Err(e) => {
                     rx_queue.truncate(data_len);
                     Print::error(&format!("Receive error: {}", e));
-                },
+                }
             }
 
             // Try to sync to the data stream, if necessary.
@@ -328,11 +299,11 @@ impl Client {
                         rx_queue = buffer_skip(rx_queue, skip);
                         self.sync = true;
                         Print::debug("net/client: Synchronized to data stream.");
-                    },
+                    }
                     None => {
                         self.sync = false;
                         rx_queue.clear();
-                    },
+                    }
                 }
             }
         }
@@ -344,24 +315,28 @@ impl Client {
                 Ok((len, Some(message))) => {
                     messages.push(message);
                     rx_queue = buffer_skip(rx_queue, len);
-                },
+                }
                 Ok((_len, None)) => {
                     // Not enough data for this message, yet.
                     break;
-                },
+                }
                 Err(e) => {
                     Print::error(&format!("Received invalid message: {}", e));
                     self.sync = false;
                     rx_queue.clear();
                     break;
-                },
+                }
             }
         }
 
         // Put all left over bytes to the queue.
         self.rx_queue = Some(rx_queue);
 
-        if messages.is_empty() { None } else { Some(messages) }
+        if messages.is_empty() {
+            None
+        } else {
+            Some(messages)
+        }
     }
 
     /// Disconnect from the server.

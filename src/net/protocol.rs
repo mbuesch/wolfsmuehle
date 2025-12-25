@@ -17,48 +17,40 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 
+use crate::board::{BOARD_HEIGHT, BOARD_WIDTH};
+use crate::net::data_repr::{FromNet32, FromNetStr, ToNet32, ToNetStr};
 use anyhow as ah;
-use crate::board::{
-    BOARD_WIDTH,
-    BOARD_HEIGHT,
-};
-use crate::net::data_repr::{
-    FromNet32,
-    FromNetStr,
-    ToNet32,
-    ToNetStr,
-};
 use std::cmp::min;
 
-pub const MSG_BUFFER_SIZE: usize    = 0x1000;
+pub const MSG_BUFFER_SIZE: usize = 0x1000;
 
 pub const MSG_PLAYERMODE_SPECTATOR: u32 = 0;
-pub const MSG_PLAYERMODE_WOLF: u32      = 1;
-pub const MSG_PLAYERMODE_SHEEP: u32     = 2;
-pub const MSG_PLAYERMODE_BOTH: u32      = 3;
+pub const MSG_PLAYERMODE_WOLF: u32 = 1;
+pub const MSG_PLAYERMODE_SHEEP: u32 = 2;
+pub const MSG_PLAYERMODE_BOTH: u32 = 3;
 
-const MSG_MAXROOMNAME: usize        = 64;
-const MSG_MAXPLAYERNAME: usize      = 64;
+const MSG_MAXROOMNAME: usize = 64;
+const MSG_MAXPLAYERNAME: usize = 64;
 
-const MSG_MAGIC: u32                = 0xAA0E1F37;
+const MSG_MAGIC: u32 = 0xAA0E1F37;
 
-const MSG_ID_NOP: u32               = 0;
-const MSG_ID_RESULT: u32            = 1;
-const MSG_ID_PING: u32              = 2;
-const MSG_ID_PONG: u32              = 3;
-const MSG_ID_JOIN: u32              = 4;
-const MSG_ID_LEAVE: u32             = 5;
-const MSG_ID_RESET: u32             = 6;
-const MSG_ID_REQROOMLIST: u32       = 7;
-const MSG_ID_ROOMLIST: u32          = 8;
-const MSG_ID_REQPLAYERLIST: u32     = 9;
-const MSG_ID_PLAYERLIST: u32        = 10;
-const MSG_ID_REQGAMESTATE: u32      = 11;
-const MSG_ID_GAMESTATE: u32         = 12;
-const MSG_ID_MOVE: u32              = 13;
-const MSG_ID_SAY: u32               = 14;
-const MSG_ID_REQRECORD: u32         = 15;
-const MSG_ID_RECORD: u32            = 16;
+const MSG_ID_NOP: u32 = 0;
+const MSG_ID_RESULT: u32 = 1;
+const MSG_ID_PING: u32 = 2;
+const MSG_ID_PONG: u32 = 3;
+const MSG_ID_JOIN: u32 = 4;
+const MSG_ID_LEAVE: u32 = 5;
+const MSG_ID_RESET: u32 = 6;
+const MSG_ID_REQROOMLIST: u32 = 7;
+const MSG_ID_ROOMLIST: u32 = 8;
+const MSG_ID_REQPLAYERLIST: u32 = 9;
+const MSG_ID_PLAYERLIST: u32 = 10;
+const MSG_ID_REQGAMESTATE: u32 = 11;
+const MSG_ID_GAMESTATE: u32 = 12;
+const MSG_ID_MOVE: u32 = 13;
+const MSG_ID_SAY: u32 = 14;
+const MSG_ID_REQRECORD: u32 = 15;
+const MSG_ID_RECORD: u32 = 16;
 
 type FieldsArray = [[u32; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 
@@ -135,42 +127,29 @@ pub fn message_from_bytes(data: &[u8]) -> ah::Result<(usize, Option<Box<dyn Mess
     }
 
     let (_sub_size, message) = match header.get_id() {
-        MSG_ID_NOP =>
-            MsgNop::from_bytes(header, &data[offset..])?,
-        MSG_ID_RESULT =>
-            MsgResult::from_bytes(header, &data[offset..])?,
-        MSG_ID_PING =>
-            MsgPing::from_bytes(header, &data[offset..])?,
-        MSG_ID_PONG =>
-            MsgPong::from_bytes(header, &data[offset..])?,
-        MSG_ID_JOIN =>
-            MsgJoin::from_bytes(header, &data[offset..])?,
-        MSG_ID_LEAVE =>
-            MsgLeave::from_bytes(header, &data[offset..])?,
-        MSG_ID_RESET =>
-            MsgReset::from_bytes(header, &data[offset..])?,
-        MSG_ID_REQROOMLIST =>
-            MsgReqRoomList::from_bytes(header, &data[offset..])?,
-        MSG_ID_ROOMLIST =>
-            MsgRoomList::from_bytes(header, &data[offset..])?,
-        MSG_ID_REQPLAYERLIST =>
-            MsgReqPlayerList::from_bytes(header, &data[offset..])?,
-        MSG_ID_PLAYERLIST =>
-            MsgPlayerList::from_bytes(header, &data[offset..])?,
-        MSG_ID_REQGAMESTATE =>
-            MsgReqGameState::from_bytes(header, &data[offset..])?,
-        MSG_ID_GAMESTATE =>
-            MsgGameState::from_bytes(header, &data[offset..])?,
-        MSG_ID_MOVE =>
-            MsgMove::from_bytes(header, &data[offset..])?,
-        MSG_ID_SAY =>
-            MsgSay::from_bytes(header, &data[offset..])?,
-        MSG_ID_REQRECORD =>
-            MsgReqRecord::from_bytes(header, &data[offset..])?,
-        MSG_ID_RECORD =>
-            MsgRecord::from_bytes(header, &data[offset..])?,
-        _ =>
-            return Err(ah::format_err!("from_bytes: Unknown ID ({}).", header.get_id())),
+        MSG_ID_NOP => MsgNop::from_bytes(header, &data[offset..])?,
+        MSG_ID_RESULT => MsgResult::from_bytes(header, &data[offset..])?,
+        MSG_ID_PING => MsgPing::from_bytes(header, &data[offset..])?,
+        MSG_ID_PONG => MsgPong::from_bytes(header, &data[offset..])?,
+        MSG_ID_JOIN => MsgJoin::from_bytes(header, &data[offset..])?,
+        MSG_ID_LEAVE => MsgLeave::from_bytes(header, &data[offset..])?,
+        MSG_ID_RESET => MsgReset::from_bytes(header, &data[offset..])?,
+        MSG_ID_REQROOMLIST => MsgReqRoomList::from_bytes(header, &data[offset..])?,
+        MSG_ID_ROOMLIST => MsgRoomList::from_bytes(header, &data[offset..])?,
+        MSG_ID_REQPLAYERLIST => MsgReqPlayerList::from_bytes(header, &data[offset..])?,
+        MSG_ID_PLAYERLIST => MsgPlayerList::from_bytes(header, &data[offset..])?,
+        MSG_ID_REQGAMESTATE => MsgReqGameState::from_bytes(header, &data[offset..])?,
+        MSG_ID_GAMESTATE => MsgGameState::from_bytes(header, &data[offset..])?,
+        MSG_ID_MOVE => MsgMove::from_bytes(header, &data[offset..])?,
+        MSG_ID_SAY => MsgSay::from_bytes(header, &data[offset..])?,
+        MSG_ID_REQRECORD => MsgReqRecord::from_bytes(header, &data[offset..])?,
+        MSG_ID_RECORD => MsgRecord::from_bytes(header, &data[offset..])?,
+        _ => {
+            return Err(ah::format_err!(
+                "from_bytes: Unknown ID ({}).",
+                header.get_id()
+            ));
+        }
     };
 
     Ok((msg_len as usize, Some(message)))
@@ -190,21 +169,19 @@ macro_rules! msg_trait_define_common {
         fn get_message(&self) -> MsgType<'_> {
             MsgType::$msg_type(self)
         }
-    }
+    };
 }
 
 macro_rules! extract_str {
-    ($max_len:path, $data:expr, $offset:expr) => {
-        {
-            let mut offset = $offset;
-            let len = min(u32::from_net(&$data[offset..])?, $max_len as u32);
-            offset += 4;
-            let mut bytes = [0; $max_len];
-            bytes[0..(len as usize)].copy_from_slice(&$data[offset..offset+(len as usize)]);
-            offset += $max_len;
-            (len, bytes, offset)
-        }
-    }
+    ($max_len:path, $data:expr, $offset:expr) => {{
+        let mut offset = $offset;
+        let len = min(u32::from_net(&$data[offset..])?, $max_len as u32);
+        offset += 4;
+        let mut bytes = [0; $max_len];
+        bytes[0..(len as usize)].copy_from_slice(&$data[offset..offset + (len as usize)]);
+        offset += $max_len;
+        (len, bytes, offset)
+    }};
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -213,26 +190,23 @@ macro_rules! extract_str {
 
 #[derive(Clone, Debug)]
 pub struct MsgHeader {
-    magic:          u32,
-    size:           u32,
-    id:             u32,
-    sequence:       u32,
-    reserved:       [u32; 4],
+    magic: u32,
+    size: u32,
+    id: u32,
+    sequence: u32,
+    reserved: [u32; 4],
 }
 
-const MSG_HEADER_SIZE: u32  = 4 * 8;
+const MSG_HEADER_SIZE: u32 = 4 * 8;
 
 impl MsgHeader {
-    fn new(magic: u32,
-           size: u32,
-           id: u32,
-           sequence: u32) -> MsgHeader {
+    fn new(magic: u32, size: u32, id: u32, sequence: u32) -> MsgHeader {
         MsgHeader {
             magic,
             size,
             id,
             sequence,
-            reserved:   [0; 4],
+            reserved: [0; 4],
         }
     }
 
@@ -258,18 +232,27 @@ impl MsgHeader {
             let magic = u32::from_net(&data[offset..])?;
             offset += 4;
             if magic != MSG_MAGIC {
-                return Err(ah::format_err!("from_bytes: Invalid Message magic (0x{:X} != 0x{:X}).",
-                                           magic, MSG_MAGIC))
+                return Err(ah::format_err!(
+                    "from_bytes: Invalid Message magic (0x{:X} != 0x{:X}).",
+                    magic,
+                    MSG_MAGIC
+                ));
             }
             let size = u32::from_net(&data[offset..])?;
             offset += 4;
             if size < MSG_HEADER_SIZE {
-                return Err(ah::format_err!("from_bytes: Invalid Message length ({} < {}).",
-                                           size, MSG_HEADER_SIZE))
+                return Err(ah::format_err!(
+                    "from_bytes: Invalid Message length ({} < {}).",
+                    size,
+                    MSG_HEADER_SIZE
+                ));
             }
             if size > MSG_BUFFER_SIZE as u32 {
-                return Err(ah::format_err!("from_bytes: Invalid Message length ({} > {}).",
-                                           size, MSG_BUFFER_SIZE));
+                return Err(ah::format_err!(
+                    "from_bytes: Invalid Message length ({} > {}).",
+                    size,
+                    MSG_BUFFER_SIZE
+                ));
             }
             let id = u32::from_net(&data[offset..])?;
             offset += 4;
@@ -307,21 +290,21 @@ macro_rules! define_trivial_message {
     ($struct_name:ident, $msg_type:ident, $id:ident) => {
         #[derive(Clone, Debug)]
         pub struct $struct_name {
-            header:     MsgHeader,
+            header: MsgHeader,
         }
 
         impl $struct_name {
             pub fn new() -> $struct_name {
                 $struct_name {
-                    header:     MsgHeader::new(MSG_MAGIC,
-                                               MSG_HEADER_SIZE,
-                                               $id,
-                                               0),
+                    header: MsgHeader::new(MSG_MAGIC, MSG_HEADER_SIZE, $id, 0),
                 }
             }
 
-            pub fn from_bytes(header: MsgHeader, _data: &[u8]) -> ah::Result<(usize, Box<dyn Message>)> {
-                Ok((0, Box::new($struct_name { header, })))
+            pub fn from_bytes(
+                header: MsgHeader,
+                _data: &[u8],
+            ) -> ah::Result<(usize, Box<dyn Message>)> {
+                Ok((0, Box::new($struct_name { header })))
             }
         }
 
@@ -335,7 +318,7 @@ macro_rules! define_trivial_message {
                 data
             }
         }
-    }
+    };
 }
 
 define_trivial_message!(MsgNop, Nop, MSG_ID_NOP);
@@ -354,38 +337,35 @@ define_trivial_message!(MsgReqRecord, ReqRecord, MSG_ID_REQRECORD);
 
 #[derive(Clone, Debug)]
 pub struct MsgResult {
-    header:             MsgHeader,
+    header: MsgHeader,
     in_reply_to_header: MsgHeader,
-    result_code:        u32,
-    message_len:        u32,
-    message:            [u8; MSG_RESULT_MAXMSGLEN],
+    result_code: u32,
+    message_len: u32,
+    message: [u8; MSG_RESULT_MAXMSGLEN],
 }
 
 const MSG_RESULT_MAXMSGLEN: usize = 0x200;
-const MSG_RESULT_SIZE: u32 = MSG_HEADER_SIZE +
-                             MSG_HEADER_SIZE +
-                             (2 * 4) +
-                             MSG_RESULT_MAXMSGLEN as u32;
+const MSG_RESULT_SIZE: u32 =
+    MSG_HEADER_SIZE + MSG_HEADER_SIZE + (2 * 4) + MSG_RESULT_MAXMSGLEN as u32;
 
-pub const MSG_RESULT_OK: u32    = 0;
-pub const MSG_RESULT_NOK: u32   = 1;
+pub const MSG_RESULT_OK: u32 = 0;
+pub const MSG_RESULT_NOK: u32 = 1;
 #[allow(dead_code)]
-pub const MSG_RESULT_USER: u32  = 0x10000;
+pub const MSG_RESULT_USER: u32 = 0x10000;
 
 impl MsgResult {
-    pub fn new(in_reply_to_msg: &dyn Message,
-               result_code:     u32,
-               message:         &str) -> ah::Result<MsgResult> {
+    pub fn new(
+        in_reply_to_msg: &dyn Message,
+        result_code: u32,
+        message: &str,
+    ) -> ah::Result<MsgResult> {
         let mut message_bytes = [0; MSG_RESULT_MAXMSGLEN];
         let message_len = match message.to_net(&mut message_bytes, true) {
             Ok(message_len) => message_len as u32,
             Err(_) => 0,
         };
         Ok(MsgResult {
-            header:         MsgHeader::new(MSG_MAGIC,
-                                           MSG_RESULT_SIZE,
-                                           MSG_ID_RESULT,
-                                           0),
+            header: MsgHeader::new(MSG_MAGIC, MSG_RESULT_SIZE, MSG_ID_RESULT, 0),
             in_reply_to_header: in_reply_to_msg.get_header().clone(),
             result_code,
             message_len,
@@ -401,8 +381,7 @@ impl MsgResult {
             offset += count;
             let result_code = u32::from_net(&data[offset..])?;
             offset += 4;
-            let (message_len, message, offset) = extract_str!(
-                MSG_RESULT_MAXMSGLEN, data, offset);
+            let (message_len, message, offset) = extract_str!(MSG_RESULT_MAXMSGLEN, data, offset);
 
             let msg = MsgResult {
                 header,
@@ -422,8 +401,8 @@ impl MsgResult {
         let repl_header = &self.in_reply_to_header;
         let other_header = other.get_header();
 
-        repl_header.get_id() == other_header.get_id() &&
-        repl_header.get_sequence() == other_header.get_sequence()
+        repl_header.get_id() == other_header.get_id()
+            && repl_header.get_sequence() == other_header.get_sequence()
     }
 
     pub fn get_result_code(&self) -> u32 {
@@ -463,38 +442,29 @@ impl Message for MsgResult {
 
 #[derive(Clone, Debug)]
 pub struct MsgJoin {
-    header:             MsgHeader,
-    room_name_len:      u32,
-    room_name:          [u8; MSG_MAXROOMNAME],
-    player_name_len:    u32,
-    player_name:        [u8; MSG_MAXPLAYERNAME],
-    player_mode:        u32,
+    header: MsgHeader,
+    room_name_len: u32,
+    room_name: [u8; MSG_MAXROOMNAME],
+    player_name_len: u32,
+    player_name: [u8; MSG_MAXPLAYERNAME],
+    player_mode: u32,
 }
 
-const MSG_JOIN_SIZE: u32 = MSG_HEADER_SIZE +
-                           4 +
-                           MSG_MAXROOMNAME as u32 +
-                           4 +
-                           MSG_MAXPLAYERNAME as u32 +
-                           4;
+const MSG_JOIN_SIZE: u32 =
+    MSG_HEADER_SIZE + 4 + MSG_MAXROOMNAME as u32 + 4 + MSG_MAXPLAYERNAME as u32 + 4;
 
 impl MsgJoin {
-    pub fn new(room_name:   &str,
-               player_name: &str,
-               player_mode: u32) -> ah::Result<MsgJoin> {
+    pub fn new(room_name: &str, player_name: &str, player_mode: u32) -> ah::Result<MsgJoin> {
         let mut room_name_bytes = [0; MSG_MAXROOMNAME];
         let room_name_len = room_name.to_net(&mut room_name_bytes, false)? as u32;
         let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
         let player_name_len = player_name.to_net(&mut player_name_bytes, false)? as u32;
         Ok(MsgJoin {
-            header:     MsgHeader::new(MSG_MAGIC,
-                                       MSG_JOIN_SIZE,
-                                       MSG_ID_JOIN,
-                                       0),
+            header: MsgHeader::new(MSG_MAGIC, MSG_JOIN_SIZE, MSG_ID_JOIN, 0),
             room_name_len,
-            room_name:      room_name_bytes,
+            room_name: room_name_bytes,
             player_name_len,
-            player_name:    player_name_bytes,
+            player_name: player_name_bytes,
             player_mode,
         })
     }
@@ -503,10 +473,9 @@ impl MsgJoin {
         if data.len() >= (MSG_JOIN_SIZE - MSG_HEADER_SIZE) as usize {
             let offset = 0;
 
-            let (room_name_len, room_name, offset) = extract_str!(
-                MSG_MAXROOMNAME, data, offset);
-            let (player_name_len, player_name, mut offset) = extract_str!(
-                MSG_MAXPLAYERNAME, data, offset);
+            let (room_name_len, room_name, offset) = extract_str!(MSG_MAXROOMNAME, data, offset);
+            let (player_name_len, player_name, mut offset) =
+                extract_str!(MSG_MAXPLAYERNAME, data, offset);
             let player_mode = u32::from_net(&data[offset..])?;
             offset += 4;
 
@@ -560,31 +529,29 @@ impl Message for MsgJoin {
 
 #[derive(Clone, Debug)]
 pub struct MsgGameState {
-    header:         MsgHeader,
-    fields:         FieldsArray,
-    moving_state:   u32,
-    moving_x:       u32,
-    moving_y:       u32,
-    turn:           u32,
+    header: MsgHeader,
+    fields: FieldsArray,
+    moving_state: u32,
+    moving_x: u32,
+    moving_y: u32,
+    turn: u32,
 }
 
-const MSG_GAME_STATE_SIZE: u32 = MSG_HEADER_SIZE +
-                                 (BOARD_WIDTH as u32 * BOARD_HEIGHT as u32 * 4) +
-                                 (4 * 4);
+const MSG_GAME_STATE_SIZE: u32 =
+    MSG_HEADER_SIZE + (BOARD_WIDTH as u32 * BOARD_HEIGHT as u32 * 4) + (4 * 4);
 
-const MSG_FIELD_INVALID: u32   = 0;
+const MSG_FIELD_INVALID: u32 = 0;
 
 impl MsgGameState {
-    pub fn new(fields:          FieldsArray,
-               moving_state:    u32,
-               moving_x:        u32,
-               moving_y:        u32,
-               turn:            u32) -> MsgGameState {
+    pub fn new(
+        fields: FieldsArray,
+        moving_state: u32,
+        moving_x: u32,
+        moving_y: u32,
+        turn: u32,
+    ) -> MsgGameState {
         MsgGameState {
-            header:     MsgHeader::new(MSG_MAGIC,
-                                       MSG_GAME_STATE_SIZE,
-                                       MSG_ID_GAMESTATE,
-                                       0),
+            header: MsgHeader::new(MSG_MAGIC, MSG_GAME_STATE_SIZE, MSG_ID_GAMESTATE, 0),
             fields,
             moving_state,
             moving_x,
@@ -668,17 +635,15 @@ impl Message for MsgGameState {
 
 #[derive(Clone, Debug)]
 pub struct MsgRecord {
-    header:         MsgHeader,
-    total_count:    u32,
-    index:          u32,
-    record_len:     u32,
-    record:         [u8; MSG_MAXRECORDLEN],
+    header: MsgHeader,
+    total_count: u32,
+    index: u32,
+    record_len: u32,
+    record: [u8; MSG_MAXRECORDLEN],
 }
 
 const MSG_MAXRECORDLEN: usize = 0x200;
-const MSG_RECORD_SIZE: u32 = MSG_HEADER_SIZE +
-                             (3 * 4) +
-                             MSG_MAXRECORDLEN as u32;
+const MSG_RECORD_SIZE: u32 = MSG_HEADER_SIZE + (3 * 4) + MSG_MAXRECORDLEN as u32;
 
 impl MsgRecord {
     pub fn new(record: &str) -> Vec<MsgRecord> {
@@ -686,19 +651,19 @@ impl MsgRecord {
         let total_count = record_bytes.len().div_ceil(MSG_MAXRECORDLEN);
         let mut ret = Vec::with_capacity(total_count);
         for i in 0..total_count {
-            let len = min(record_bytes.len() - (i * MSG_MAXRECORDLEN),
-                          MSG_MAXRECORDLEN);
+            let len = min(
+                record_bytes.len() - (i * MSG_MAXRECORDLEN),
+                MSG_MAXRECORDLEN,
+            );
             let mut rec = [0; MSG_MAXRECORDLEN];
-            rec[0..len].copy_from_slice(&record_bytes[i*MSG_MAXRECORDLEN..i*MSG_MAXRECORDLEN+len]);
+            rec[0..len]
+                .copy_from_slice(&record_bytes[i * MSG_MAXRECORDLEN..i * MSG_MAXRECORDLEN + len]);
             ret.push(MsgRecord {
-                header:     MsgHeader::new(MSG_MAGIC,
-                                           MSG_RECORD_SIZE,
-                                           MSG_ID_RECORD,
-                                           0),
-                total_count:    total_count as u32,
-                index:          i as u32,
-                record_len:     len as u32,
-                record:         rec,
+                header: MsgHeader::new(MSG_MAGIC, MSG_RECORD_SIZE, MSG_ID_RECORD, 0),
+                total_count: total_count as u32,
+                index: i as u32,
+                record_len: len as u32,
+                record: rec,
             })
         }
         ret
@@ -712,8 +677,7 @@ impl MsgRecord {
             offset += 4;
             let index = u32::from_net(&data[offset..])?;
             offset += 4;
-            let (record_len, record, offset) = extract_str!(
-                MSG_MAXRECORDLEN, data, offset);
+            let (record_len, record, offset) = extract_str!(MSG_MAXRECORDLEN, data, offset);
 
             let msg = MsgRecord {
                 header,
@@ -745,7 +709,10 @@ impl MsgRecord {
         let bytes: Vec<u8> = parts
             .iter()
             .map(|m| m.get_record_part())
-            .fold(vec![], |mut a, b| { a.extend_from_slice(b); a });
+            .fold(vec![], |mut a, b| {
+                a.extend_from_slice(b);
+                a
+            });
         String::from_net(&bytes, bytes.len(), false)
     }
 }
@@ -771,28 +738,21 @@ impl Message for MsgRecord {
 
 #[derive(Clone, Debug)]
 pub struct MsgRoomList {
-    header:         MsgHeader,
-    total_count:    u32,
-    index:          u32,
-    room_name_len:  u32,
-    room_name:      [u8; MSG_MAXROOMNAME],
+    header: MsgHeader,
+    total_count: u32,
+    index: u32,
+    room_name_len: u32,
+    room_name: [u8; MSG_MAXROOMNAME],
 }
 
-const MSG_ROOM_LIST_SIZE: u32 = MSG_HEADER_SIZE +
-                                (3 * 4) +
-                                MSG_MAXROOMNAME as u32;
+const MSG_ROOM_LIST_SIZE: u32 = MSG_HEADER_SIZE + (3 * 4) + MSG_MAXROOMNAME as u32;
 
 impl MsgRoomList {
-    pub fn new(total_count: u32,
-               index: u32,
-               room_name: &str) -> ah::Result<MsgRoomList> {
+    pub fn new(total_count: u32, index: u32, room_name: &str) -> ah::Result<MsgRoomList> {
         let mut room_name_bytes = [0; MSG_MAXROOMNAME];
         let room_name_len = room_name.to_net(&mut room_name_bytes, false)? as u32;
         Ok(MsgRoomList {
-            header:     MsgHeader::new(MSG_MAGIC,
-                                       MSG_ROOM_LIST_SIZE,
-                                       MSG_ID_ROOMLIST,
-                                       0),
+            header: MsgHeader::new(MSG_MAGIC, MSG_ROOM_LIST_SIZE, MSG_ID_ROOMLIST, 0),
             total_count,
             index,
             room_name_len,
@@ -808,8 +768,7 @@ impl MsgRoomList {
             offset += 4;
             let index = u32::from_net(&data[offset..])?;
             offset += 4;
-            let (room_name_len, room_name, offset) = extract_str!(
-                MSG_MAXROOMNAME, data, offset);
+            let (room_name_len, room_name, offset) = extract_str!(MSG_MAXROOMNAME, data, offset);
 
             let msg = MsgRoomList {
                 header,
@@ -859,31 +818,27 @@ impl Message for MsgRoomList {
 
 #[derive(Clone, Debug)]
 pub struct MsgPlayerList {
-    header:             MsgHeader,
-    total_count:        u32,
-    index:              u32,
-    player_name_len:    u32,
-    player_name:        [u8; MSG_MAXPLAYERNAME],
-    player_mode:        u32,
+    header: MsgHeader,
+    total_count: u32,
+    index: u32,
+    player_name_len: u32,
+    player_name: [u8; MSG_MAXPLAYERNAME],
+    player_mode: u32,
 }
 
-const MSG_PLAYER_LIST_SIZE: u32 = MSG_HEADER_SIZE +
-                                  (3 * 4) +
-                                  MSG_MAXPLAYERNAME as u32 +
-                                  4;
+const MSG_PLAYER_LIST_SIZE: u32 = MSG_HEADER_SIZE + (3 * 4) + MSG_MAXPLAYERNAME as u32 + 4;
 
 impl MsgPlayerList {
-    pub fn new(total_count: u32,
-               index: u32,
-               player_name: &str,
-               player_mode: u32) -> ah::Result<MsgPlayerList> {
+    pub fn new(
+        total_count: u32,
+        index: u32,
+        player_name: &str,
+        player_mode: u32,
+    ) -> ah::Result<MsgPlayerList> {
         let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
         let player_name_len = player_name.to_net(&mut player_name_bytes, false)? as u32;
         Ok(MsgPlayerList {
-            header:     MsgHeader::new(MSG_MAGIC,
-                                       MSG_PLAYER_LIST_SIZE,
-                                       MSG_ID_PLAYERLIST,
-                                       0),
+            header: MsgHeader::new(MSG_MAGIC, MSG_PLAYER_LIST_SIZE, MSG_ID_PLAYERLIST, 0),
             total_count,
             index,
             player_name_len,
@@ -900,8 +855,8 @@ impl MsgPlayerList {
             offset += 4;
             let index = u32::from_net(&data[offset..])?;
             offset += 4;
-            let (player_name_len, player_name, mut offset) = extract_str!(
-                MSG_MAXPLAYERNAME, data, offset);
+            let (player_name_len, player_name, mut offset) =
+                extract_str!(MSG_MAXPLAYERNAME, data, offset);
             let player_mode = u32::from_net(&data[offset..])?;
             offset += 4;
 
@@ -959,34 +914,28 @@ impl Message for MsgPlayerList {
 
 #[derive(Clone, Debug)]
 pub struct MsgMove {
-    header:         MsgHeader,
-    action:         u32,
-    token:          u32,
-    coord_x:        u32,
-    coord_y:        u32,
+    header: MsgHeader,
+    action: u32,
+    token: u32,
+    coord_x: u32,
+    coord_y: u32,
 }
 
 const MSG_MOVE_SIZE: u32 = MSG_HEADER_SIZE + (4 * 4);
 
-pub const MSG_MOVE_ACTION_PICK: u32         = 0;
-pub const MSG_MOVE_ACTION_MOVE: u32         = 1;
-pub const MSG_MOVE_ACTION_PUT: u32          = 2;
-pub const MSG_MOVE_ACTION_ABORT: u32        = 3;
+pub const MSG_MOVE_ACTION_PICK: u32 = 0;
+pub const MSG_MOVE_ACTION_MOVE: u32 = 1;
+pub const MSG_MOVE_ACTION_PUT: u32 = 2;
+pub const MSG_MOVE_ACTION_ABORT: u32 = 3;
 
-pub const MSG_MOVE_TOKEN_CURRENT: u32       = 0;
-pub const MSG_MOVE_TOKEN_WOLF: u32          = 1;
-pub const MSG_MOVE_TOKEN_SHEEP: u32         = 2;
+pub const MSG_MOVE_TOKEN_CURRENT: u32 = 0;
+pub const MSG_MOVE_TOKEN_WOLF: u32 = 1;
+pub const MSG_MOVE_TOKEN_SHEEP: u32 = 2;
 
 impl MsgMove {
-    pub fn new(action:  u32,
-               token:   u32,
-               coord_x: u32,
-               coord_y: u32) -> MsgMove {
+    pub fn new(action: u32, token: u32, coord_x: u32, coord_y: u32) -> MsgMove {
         MsgMove {
-            header:         MsgHeader::new(MSG_MAGIC,
-                                           MSG_MOVE_SIZE,
-                                           MSG_ID_MOVE,
-                                           0),
+            header: MsgHeader::new(MSG_MAGIC, MSG_MOVE_SIZE, MSG_ID_MOVE, 0),
             action,
             token,
             coord_x,
@@ -1047,36 +996,29 @@ impl Message for MsgMove {
 
 #[derive(Clone, Debug)]
 pub struct MsgSay {
-    header:             MsgHeader,
-    player_name_len:    u32,
-    player_name:        [u8; MSG_MAXPLAYERNAME],
-    message_len:        u32,
-    message:            [u8; MSG_SAY_MAXMSGLEN],
+    header: MsgHeader,
+    player_name_len: u32,
+    player_name: [u8; MSG_MAXPLAYERNAME],
+    message_len: u32,
+    message: [u8; MSG_SAY_MAXMSGLEN],
 }
 
 const MSG_SAY_MAXMSGLEN: usize = 0x200;
-const MSG_SAY_SIZE: u32 = MSG_HEADER_SIZE +
-                          4 +
-                          MSG_MAXPLAYERNAME as u32 +
-                          4 +
-                          MSG_SAY_MAXMSGLEN as u32;
+const MSG_SAY_SIZE: u32 =
+    MSG_HEADER_SIZE + 4 + MSG_MAXPLAYERNAME as u32 + 4 + MSG_SAY_MAXMSGLEN as u32;
 
 impl MsgSay {
-    pub fn new(player_name: &str,
-               message:     &str) -> ah::Result<MsgSay> {
+    pub fn new(player_name: &str, message: &str) -> ah::Result<MsgSay> {
         let mut player_name_bytes = [0; MSG_MAXPLAYERNAME];
         let player_name_len = player_name.to_net(&mut player_name_bytes, true)?;
         let mut message_bytes = [0; MSG_SAY_MAXMSGLEN];
         let message_len = message.to_net(&mut message_bytes, true)?;
         Ok(MsgSay {
-            header:         MsgHeader::new(MSG_MAGIC,
-                                           MSG_SAY_SIZE,
-                                           MSG_ID_SAY,
-                                           0),
-            player_name_len:    player_name_len as u32,
-            player_name:        player_name_bytes,
-            message_len:        message_len as u32,
-            message:            message_bytes,
+            header: MsgHeader::new(MSG_MAGIC, MSG_SAY_SIZE, MSG_ID_SAY, 0),
+            player_name_len: player_name_len as u32,
+            player_name: player_name_bytes,
+            message_len: message_len as u32,
+            message: message_bytes,
         })
     }
 
@@ -1084,10 +1026,9 @@ impl MsgSay {
         if data.len() >= (MSG_SAY_SIZE - MSG_HEADER_SIZE) as usize {
             let offset = 0;
 
-            let (player_name_len, player_name, offset) = extract_str!(
-                MSG_MAXPLAYERNAME, data, offset);
-            let (message_len, message, offset) = extract_str!(
-                MSG_SAY_MAXMSGLEN, data, offset);
+            let (player_name_len, player_name, offset) =
+                extract_str!(MSG_MAXPLAYERNAME, data, offset);
+            let (message_len, message, offset) = extract_str!(MSG_SAY_MAXMSGLEN, data, offset);
 
             let msg = MsgSay {
                 header,

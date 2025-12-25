@@ -20,21 +20,11 @@
 use crate::print::Print;
 use std::sync::{
     Arc,
-    atomic::{
-        AtomicBool,
-        Ordering,
-    },
-    mpsc::{
-        channel,
-        Sender,
-        Receiver,
-    },
+    atomic::{AtomicBool, Ordering},
+    mpsc::{Receiver, Sender, channel},
 };
 use std::thread::sleep;
-use std::time::{
-    Duration,
-    Instant,
-};
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MulticastSync {
@@ -45,31 +35,29 @@ pub enum MulticastSync {
 /// The packet sent over the multicast channels.
 #[derive(Clone, Debug)]
 pub struct MulticastPacket {
-    pub data:           Vec<u8>,
-    pub meta_data:      Vec<u8>,
-    pub include_self:   bool,
-    pub sync:           MulticastSync,
+    pub data: Vec<u8>,
+    pub meta_data: Vec<u8>,
+    pub include_self: bool,
+    pub sync: MulticastSync,
 }
 
 #[derive(Debug)]
 struct MulticastRouterSub {
-    from_sub:           Receiver<MulticastPacket>,
-    to_sub:             Sender<MulticastPacket>,
-    killed:             Arc<AtomicBool>,
-    router_received:    Arc<AtomicBool>,
+    from_sub: Receiver<MulticastPacket>,
+    to_sub: Sender<MulticastPacket>,
+    killed: Arc<AtomicBool>,
+    router_received: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
 pub struct MulticastRouter {
-    subs:   Vec<MulticastRouterSub>,
+    subs: Vec<MulticastRouterSub>,
 }
 
 impl MulticastRouter {
     /// Create a new multicast router.
     pub fn new() -> MulticastRouter {
-        MulticastRouter {
-            subs: vec![],
-        }
+        MulticastRouter { subs: vec![] }
     }
 
     /// Create a new multicast subscriber and connect it to this router.
@@ -87,10 +75,7 @@ impl MulticastRouter {
             router_received,
         };
         self.subs.push(mc_router_sub);
-        MulticastSubscriber::new(from_router,
-                                 to_router,
-                                 killed2,
-                                 router_received2)
+        MulticastSubscriber::new(from_router, to_router, killed2, router_received2)
     }
 
     /// Run the router main loop.
@@ -107,8 +92,9 @@ impl MulticastRouter {
                 for to_sub in &self.subs {
                     // Send it.
                     // Include ourselves only, if requested.
-                    if (!std::ptr::eq(from_sub, to_sub) || pack.include_self) &&
-                       let Err(e) = to_sub.to_sub.send(pack.clone()) {
+                    if (!std::ptr::eq(from_sub, to_sub) || pack.include_self)
+                        && let Err(e) = to_sub.to_sub.send(pack.clone())
+                    {
                         // This may happen, if the channel has just been closed,
                         // but the killed-check hasn't caught it, yet.
                         Print::debug(&format!("Failed to route: {}", e));
@@ -121,17 +107,19 @@ impl MulticastRouter {
 
 #[derive(Debug)]
 pub struct MulticastSubscriber {
-    from_router:        Receiver<MulticastPacket>,
-    to_router:          Sender<MulticastPacket>,
-    killed:             Arc<AtomicBool>,
-    router_received:    Arc<AtomicBool>,
+    from_router: Receiver<MulticastPacket>,
+    to_router: Sender<MulticastPacket>,
+    killed: Arc<AtomicBool>,
+    router_received: Arc<AtomicBool>,
 }
 
 impl MulticastSubscriber {
-    fn new(from_router:     Receiver<MulticastPacket>,
-           to_router:       Sender<MulticastPacket>,
-           killed:          Arc<AtomicBool>,
-           router_received: Arc<AtomicBool>) -> MulticastSubscriber {
+    fn new(
+        from_router: Receiver<MulticastPacket>,
+        to_router: Sender<MulticastPacket>,
+        killed: Arc<AtomicBool>,
+        router_received: Arc<AtomicBool>,
+    ) -> MulticastSubscriber {
         MulticastSubscriber {
             from_router,
             to_router,
@@ -160,7 +148,7 @@ impl MulticastSubscriber {
                         }
                         sleep(Duration::from_millis(10));
                     }
-                },
+                }
             }
         }
     }
