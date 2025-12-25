@@ -387,7 +387,7 @@ impl GameState {
                     // Check if this wolf can do a valid move.
                     for offset in &MOVE_OFFSETS {
                         let to_pos = coord + *offset;
-                        match self.validate_move(coord, to_pos) {
+                        match self.do_validate_move(coord, to_pos, PlayerMode::Wolf, Turn::Wolf) {
                             ValidationResult::Valid => can_move = true,
                             ValidationResult::Invalid | ValidationResult::ValidCapture(_) => (),
                         }
@@ -395,7 +395,7 @@ impl GameState {
                     // Check if this wolf can do a valid capture.
                     for offset in &CAPTURE_OFFSETS {
                         let to_pos = coord + *offset;
-                        match self.validate_move(coord, to_pos) {
+                        match self.do_validate_move(coord, to_pos, PlayerMode::Wolf, Turn::Wolf) {
                             ValidationResult::ValidCapture(_) => can_move = true,
                             ValidationResult::Invalid | ValidationResult::Valid => (),
                         }
@@ -484,9 +484,20 @@ impl GameState {
     }
 
     /// Check if a move from from_pos to to_pos is valid.
+    fn validate_move(&self, from_pos: Coord, to_pos: Coord) -> ValidationResult {
+        self.do_validate_move(from_pos, to_pos, self.player_mode, self.turn)
+    }
+
+    /// Check if a move from from_pos to to_pos is valid.
     #[allow(clippy::nonminimal_bool)]
     #[allow(clippy::collapsible_if)]
-    fn validate_move(&self, from_pos: Coord, to_pos: Coord) -> ValidationResult {
+    fn do_validate_move(
+        &self,
+        from_pos: Coord,
+        to_pos: Coord,
+        player_mode: PlayerMode,
+        turn: Turn,
+    ) -> ValidationResult {
         // Check if positions are on the board.
         if !coord_is_on_board(from_pos) || !coord_is_on_board(to_pos) {
             return ValidationResult::Invalid;
@@ -508,7 +519,7 @@ impl GameState {
         }
 
         // Check if the player is allowed to move this token.
-        match self.player_mode {
+        match player_mode {
             PlayerMode::Spectator => return ValidationResult::Invalid,
             PlayerMode::Both => (),
             PlayerMode::Wolf => {
@@ -524,7 +535,7 @@ impl GameState {
         }
 
         // Check if this is our turn.
-        match self.turn {
+        match turn {
             Turn::Sheep => {
                 if from_state != FieldState::Sheep {
                     return ValidationResult::Invalid;
@@ -646,6 +657,7 @@ impl GameState {
                         }
                     }
                 }
+                //TODO: Can we have a WolfOrSheep turn in the "more" case?
                 self.turn = if more { Turn::Wolf } else { Turn::Sheep };
             }
         }
