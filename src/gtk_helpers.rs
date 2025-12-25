@@ -20,7 +20,6 @@
 pub use gdk;
 pub use gdk::prelude::*;
 pub use gdk_pixbuf;
-pub use gio::prelude::*;
 pub use glib;
 pub use gtk;
 pub use gtk::prelude::*;
