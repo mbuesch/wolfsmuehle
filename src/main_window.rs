@@ -292,7 +292,49 @@ impl MainWindow {
 
     fn record_show(&self) {
         let log = self.game.borrow_mut().get_recorder().get_moves_as_text();
-        messagebox_info(Some(&self.appwindow), &log);
+
+        let win = gtk::Window::builder()
+            .title("Game record")
+            .transient_for(&self.appwindow)
+            .modal(true)
+            .default_width(300)
+            .default_height(400)
+            .build();
+
+        let vbox = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        vbox.set_margin_top(12);
+        vbox.set_margin_bottom(12);
+        vbox.set_margin_start(12);
+        vbox.set_margin_end(12);
+
+        let scrolled = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .vexpand(true)
+            .build();
+
+        let text_view = gtk::TextView::new();
+        text_view.set_editable(false);
+        text_view.set_cursor_visible(false);
+        text_view.set_monospace(true);
+        text_view.buffer().set_text(&log);
+        scrolled.set_child(Some(&text_view));
+        vbox.append(&scrolled);
+
+        let button_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        button_box.set_halign(gtk::Align::End);
+        let close_btn = gtk::Button::with_label("Close");
+        button_box.append(&close_btn);
+        vbox.append(&button_box);
+
+        win.set_child(Some(&vbox));
+
+        let win2 = win.clone();
+        close_btn.connect_clicked(move |_| {
+            win2.close();
+        });
+
+        win.show();
     }
 
     fn connect_game(&mut self) {
